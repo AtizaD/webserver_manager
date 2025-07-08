@@ -36,8 +36,9 @@ A comprehensive, production-ready suite of bash scripts for managing web servers
 ## 📦 Installation
 
 ### Quick Start
-```bash
+
 # Download and run the main launcher
+```bash
 bash <(curl -s https://raw.githubusercontent.com/AtizaD/webserver_manager/main/main.sh) &
 ```
 
