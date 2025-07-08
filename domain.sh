@@ -380,8 +380,94 @@ install_nginx_basic() {
 # DOMAIN MANAGEMENT
 # =============================================================================
 
-# Enhanced domain tracking
-add_domain_to_list() {
+# Auto-detect and import existing domains
+auto_detect_domains() {
+    print_section "Auto-Detecting Existing Domains"
+    
+    local detected_count=0
+    mkdir -p "$(dirname "$DOMAIN_LIST_FILE")"
+    
+    # Create empty file if it doesn't exist
+    touch "$DOMAIN_LIST_FILE"
+    
+    if [[ "$CURRENT_WEBSERVER" == "nginx" ]]; then
+        print_status "Scanning Nginx configurations..."
+        
+        # Find all Nginx site configurations
+        for site_file in /etc/nginx/sites-available/*; do
+            [[ ! -f "$site_file" ]] && continue
+            [[ "$(basename "$site_file")" == "default" ]] && continue
+            
+            # Extract server_name from Nginx config
+            local domain=$(grep -E "^\s*server_name" "$site_file" | head -1 | awk '{print $2}' | sed 's/;//' | sed 's/www\.//')
+            
+            # Skip if domain is empty or invalid
+            [[ -z "$domain" ]] && continue
+            [[ "$domain" == "_" ]] && continue
+            
+            # Check if domain is already tracked
+            if ! grep -q "^$domain:" "$DOMAIN_LIST_FILE" 2>/dev/null; then
+                # Check if SSL exists
+                local ssl_status="false"
+                if [[ -d "/etc/letsencrypt/live/$domain" ]]; then
+                    ssl_status="true"
+                fi
+                
+                # Determine document root
+                local doc_root="/var/www/$domain"
+                local config_root=$(grep -E "^\s*root" "$site_file" | head -1 | awk '{print $2}' | sed 's/;//')
+                [[ -n "$config_root" ]] && doc_root="$config_root"
+                
+                # Add to tracking
+                echo "$domain:nginx:$ssl_status:$doc_root:$(date '+%Y-%m-%d %H:%M:%S')" >> "$DOMAIN_LIST_FILE"
+                print_success "Imported existing domain: $domain"
+                ((detected_count++))
+            fi
+        done
+        
+    elif [[ "$CURRENT_WEBSERVER" == "apache" ]]; then
+        print_status "Scanning Apache configurations..."
+        
+        # Find all Apache site configurations
+        for site_file in /etc/apache2/sites-available/*.conf; do
+            [[ ! -f "$site_file" ]] && continue
+            [[ "$(basename "$site_file")" == "000-default.conf" ]] && continue
+            [[ "$(basename "$site_file")" == "default-ssl.conf" ]] && continue
+            
+            # Extract ServerName from Apache config
+            local domain=$(grep -E "^\s*ServerName" "$site_file" | head -1 | awk '{print $2}')
+            
+            # Skip if domain is empty
+            [[ -z "$domain" ]] && continue
+            
+            # Check if domain is already tracked
+            if ! grep -q "^$domain:" "$DOMAIN_LIST_FILE" 2>/dev/null; then
+                # Check if SSL exists
+                local ssl_status="false"
+                if [[ -d "/etc/letsencrypt/live/$domain" ]]; then
+                    ssl_status="true"
+                fi
+                
+                # Determine document root
+                local doc_root="/var/www/$domain"
+                local config_root=$(grep -E "^\s*DocumentRoot" "$site_file" | head -1 | awk '{print $2}')
+                [[ -n "$config_root" ]] && doc_root="$config_root"
+                
+                # Add to tracking
+                echo "$domain:apache:$ssl_status:$doc_root:$(date '+%Y-%m-%d %H:%M:%S')" >> "$DOMAIN_LIST_FILE"
+                print_success "Imported existing domain: $domain"
+                ((detected_count++))
+            fi
+        done
+    fi
+    
+    if [[ $detected_count -gt 0 ]]; then
+        print_success "Auto-detected and imported $detected_count existing domains"
+        log_message "INFO" "Auto-detected $detected_count existing domains"
+    else
+        print_info "No new domains found to import"
+    fi
+}
     local domain="$1"
     local webserver="$2"
     local ssl_status="$3"
@@ -869,12 +955,13 @@ remove_domain() {
 
 # Enhanced domain listing (simple)
 list_domains_simple() {
-    if [[ ! -f "$DOMAIN_LIST_FILE" ]]; then
+    if [[ ! -f "$DOMAIN_LIST_FILE" ]] || [[ ! -s "$DOMAIN_LIST_FILE" ]]; then
         return 1
     fi
     
     print_info "Configured domains:"
     while IFS=':' read -r domain webserver ssl_status document_root date_added; do
+        [[ -z "$domain" ]] && continue  # Skip empty lines
         local ssl_indicator=""
         if [[ "$ssl_status" == "true" ]]; then
             ssl_indicator=" ${GREEN}[SSL]${NC}"
@@ -889,13 +976,14 @@ list_domains_simple() {
 list_domains_detailed() {
     print_header "Domain Overview"
     
-    if [[ ! -f "$DOMAIN_LIST_FILE" ]]; then
+    if [[ ! -f "$DOMAIN_LIST_FILE" ]] || [[ ! -s "$DOMAIN_LIST_FILE" ]]; then
         print_warning "No domains configured yet"
+        print_info "Use option 1 to add a domain, or the system will auto-detect existing ones"
         return 0
     fi
     
     # Count domains
-    local domain_count=$(wc -l < "$DOMAIN_LIST_FILE")
+    local domain_count=$(get_domain_count)
     print_info "Total domains: $domain_count"
     
     echo
@@ -903,14 +991,16 @@ list_domains_detailed() {
     printf "%-25s %-10s %-8s %-10s %-20s %s\n" "------" "------" "---" "------" "-----" "-------------"
     
     while IFS=':' read -r domain webserver ssl_status document_root date_added; do
+        [[ -z "$domain" ]] && continue  # Skip empty lines
+        
         # Check domain accessibility
         local status="Unknown"
         local status_color="$GRAY"
         
-        if curl -s -o /dev/null -w "%{http_code}" "http://$domain" 2>/dev/null | grep -q "200"; then
+        if timeout 5 curl -s -o /dev/null -w "%{http_code}" "http://$domain" 2>/dev/null | grep -q "200"; then
             status="Active"
             status_color="$GREEN"
-        elif curl -s -o /dev/null -w "%{http_code}" "http://$domain" 2>/dev/null | grep -q "000"; then
+        elif timeout 5 curl -s -o /dev/null -w "%{http_code}" "http://$domain" 2>/dev/null | grep -q "000"; then
             status="Unreachable"
             status_color="$RED"
         else
@@ -1429,10 +1519,7 @@ EOF
         echo -e "Web Server: ${GREEN}$CURRENT_WEBSERVER${NC}  Server IP: ${GREEN}$SERVER_IP${NC}"
         
         # Domain count
-        local domain_count=0
-        if [[ -f "$DOMAIN_LIST_FILE" ]]; then
-            domain_count=$(wc -l < "$DOMAIN_LIST_FILE")
-        fi
+        local domain_count=$(get_domain_count)
         echo -e "Configured Domains: ${GREEN}$domain_count${NC}"
         
         print_section "Main Menu"
@@ -1597,6 +1684,9 @@ main() {
     # Detect and ensure web server
     detect_webserver
     ensure_webserver
+    
+    # Auto-detect existing domains
+    auto_detect_domains
     
     # Start main menu
     show_main_menu
