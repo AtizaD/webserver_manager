@@ -73,9 +73,8 @@ sudo ./main.sh --update        # Update scripts
 
 ```bash
 # Download all scripts
-wget https://raw.githubusercontent.com/AtizaD/webserver_manager/main/{main,server,domain}.sh
-chmod +x *.sh
-sudo ./main.sh
+# Download the fixed version
+wget -O main.sh https://raw.githubusercontent.com/AtizaD/webserver_manager/main/main.sh && chmod +x main.sh && sudo ./main.sh
 
 # Or clone repository
 git clone https://github.com/AtizaD/webserver_manager.git
