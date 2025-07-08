@@ -570,7 +570,7 @@ list_domains_detailed() {
     done < "$DOMAIN_LIST_FILE"
 }
 
-# SSL Management
+# SSL Management - Fixed Version
 install_certbot() {
     if command -v certbot &> /dev/null; then
         return 0
@@ -578,13 +578,7 @@ install_certbot() {
     
     print_status "Installing Certbot..."
     apt update >/dev/null 2>&1
-    
-    if [[ "$CURRENT_WEBSERVER" == "apache" ]]; then
-        apt install -y certbot python3-certbot-apache >/dev/null 2>&1
-    elif [[ "$CURRENT_WEBSERVER" == "nginx" ]]; then
-        apt install -y certbot python3-certbot-nginx >/dev/null 2>&1
-    fi
-    
+    apt install -y certbot >/dev/null 2>&1
     print_success "Certbot installed"
 }
 
@@ -595,6 +589,7 @@ install_ssl_certificate() {
     
     install_certbot
     
+    # Pre-flight check
     if ! timeout 5 curl -s -o /dev/null -w "%{http_code}" "http://$domain" | grep -q "200"; then
         print_warning "Domain $domain is not accessible"
         if ! confirm_action "Continue anyway?"; then
@@ -607,29 +602,135 @@ install_ssl_certificate() {
     
     [[ -z "$email" ]] && { print_error "Email required"; return 1; }
     
+    print_section "Getting SSL Certificate"
+    print_info "Using standalone method for better reliability"
+    
+    # Stop web server temporarily for standalone method
+    print_status "Stopping $CURRENT_WEBSERVER temporarily..."
+    systemctl stop "$CURRENT_WEBSERVER" >/dev/null 2>&1
+    
+    # Use standalone method - more reliable than nginx plugin
+    print_status "Requesting SSL certificate..."
     local success=false
     
-    if [[ "$CURRENT_WEBSERVER" == "apache" ]]; then
-        if certbot --apache -d "$domain" -d "www.$domain" --email "$email" --agree-tos --non-interactive --redirect >/dev/null 2>&1; then
-            success=true
-        fi
-    elif [[ "$CURRENT_WEBSERVER" == "nginx" ]]; then
-        if certbot --nginx -d "$domain" -d "www.$domain" --email "$email" --agree-tos --non-interactive --redirect >/dev/null 2>&1; then
-            success=true
-        fi
+    if certbot certonly --standalone \
+        -d "$domain" -d "www.$domain" \
+        --email "$email" \
+        --agree-tos \
+        --non-interactive \
+        --verbose >/dev/null 2>&1; then
+        success=true
     fi
     
+    # Restart web server
+    print_status "Restarting $CURRENT_WEBSERVER..."
+    systemctl start "$CURRENT_WEBSERVER" >/dev/null 2>&1
+    
     if [[ "$success" == true ]]; then
-        print_success "SSL certificate installed for $domain"
+        print_success "SSL certificate obtained successfully"
         
+        # Configure web server for SSL
+        configure_ssl_nginx "$domain"
+        
+        # Update domain tracking
         if [[ -f "$DOMAIN_LIST_FILE" ]]; then
             sed -i "s/^$domain:$CURRENT_WEBSERVER:false:/$domain:$CURRENT_WEBSERVER:true:/" "$DOMAIN_LIST_FILE"
         fi
         
+        print_success "SSL certificate installed and configured for $domain"
+        print_info "Your site is now available at: https://$domain"
         log_message "INFO" "SSL installed for $domain"
     else
-        print_error "SSL installation failed"
-        print_info "Check: DNS points to this server, ports 80/443 open"
+        print_error "SSL certificate installation failed"
+        print_info "Common issues:"
+        print_info "• Domain doesn't point to this server"
+        print_info "• Port 80/443 blocked by firewall"
+        print_info "• Rate limit reached (try again later)"
+        
+        # Check certbot logs for more details
+        print_status "Checking error logs..."
+        if [[ -f "/var/log/letsencrypt/letsencrypt.log" ]]; then
+            local last_error=$(tail -10 /var/log/letsencrypt/letsencrypt.log | grep -i error | tail -1)
+            [[ -n "$last_error" ]] && print_info "Last error: $last_error"
+        fi
+    fi
+}
+
+# Configure Nginx for SSL
+configure_ssl_nginx() {
+    local domain="$1"
+    
+    if [[ "$CURRENT_WEBSERVER" != "nginx" ]]; then
+        return 0
+    fi
+    
+    print_status "Configuring Nginx for SSL..."
+    
+    # Backup original config
+    cp "/etc/nginx/sites-available/$domain" "/etc/nginx/sites-available/$domain.backup"
+    
+    # Create SSL-enabled configuration
+    cat > "/etc/nginx/sites-available/$domain" << EOF
+# HTTP - Redirect to HTTPS
+server {
+    listen 80;
+    server_name $domain www.$domain;
+    return 301 https://\$server_name\$request_uri;
+}
+
+# HTTPS - Main configuration
+server {
+    listen 443 ssl http2;
+    server_name $domain www.$domain;
+    root /var/www/$domain;
+    index index.html index.php;
+    
+    # SSL Configuration
+    ssl_certificate /etc/letsencrypt/live/$domain/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/$domain/privkey.pem;
+    
+    # SSL Security Settings
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+    
+    # Security Headers
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Frame-Options DENY always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    
+    # Let's Encrypt renewal
+    location /.well-known/acme-challenge/ {
+        root /var/www/$domain;
+        allow all;
+    }
+    
+    location / {
+        try_files \$uri \$uri/ =404;
+    }
+    
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/var/run/php/php-fpm.sock;
+    }
+    
+    location ~ /\. {
+        deny all;
+    }
+}
+EOF
+    
+    # Test and reload nginx
+    if nginx -t >/dev/null 2>&1; then
+        systemctl reload nginx >/dev/null 2>&1
+        print_success "Nginx SSL configuration applied"
+    else
+        print_error "Nginx configuration error, restoring backup"
+        mv "/etc/nginx/sites-available/$domain.backup" "/etc/nginx/sites-available/$domain"
+        systemctl reload nginx >/dev/null 2>&1
     fi
 }
 
