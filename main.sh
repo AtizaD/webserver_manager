@@ -18,7 +18,7 @@ readonly LOG_FILE="$SCRIPT_DIR/logs/main.log"
 readonly CONFIG_FILE="$SCRIPT_DIR/config/main.conf"
 
 # Repository configuration
-readonly SCRIPT_BASE_URL="https://raw.githubusercontent.com/yourusername/vps-manager/main"
+readonly SCRIPT_BASE_URL="https://raw.githubusercontent.com/AtizaD/webserver_manager/main"
 readonly SERVER_SCRIPT="server.sh"
 readonly DOMAIN_SCRIPT="domain.sh"
 
