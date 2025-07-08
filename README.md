@@ -11,7 +11,7 @@
 
 ```bash
 # One-line installation
-bash <(curl -s https://raw.githubusercontent.com/AtizaD/webserver_manager/main/main.sh)
+wget -O main.sh https://raw.githubusercontent.com/AtizaD/webserver_manager/main/main.sh && chmod +x main.sh && sudo ./main.sh
 ```
 
 ## 🎯 What It Does
