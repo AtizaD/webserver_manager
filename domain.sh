@@ -11,7 +11,7 @@ set -euo pipefail  # Exit on error, undefined vars, pipe failures
 # CONSTANTS AND CONFIGURATION
 # =============================================================================
 
-readonly VERSION="2.0"
+readonly SCRIPT_VERSION="2.0"
 readonly SCRIPT_NAME="$(basename "$0")"
 readonly SCRIPT_DIR="/opt/vps_manager"
 readonly LOG_FILE="$SCRIPT_DIR/logs/domain.log"
@@ -1578,7 +1578,7 @@ system_tools_menu() {
 
 # Main function
 main() {
-    print_header "VPS Domain Management - Production Ready v$VERSION"
+    print_header "VPS Domain Management - Production Ready v$SCRIPT_VERSION"
     
     # Initial setup
     check_root
@@ -1592,7 +1592,7 @@ main() {
     print_success "Server IP: $SERVER_IP"
     
     # Log startup
-    log_message "INFO" "VPS Domain Manager started (v$VERSION)"
+    log_message "INFO" "VPS Domain Manager started (v$SCRIPT_VERSION)"
     
     # Detect and ensure web server
     detect_webserver
@@ -1651,7 +1651,7 @@ if [[ $# -gt 0 ]]; then
             exit 0
             ;;
         --help)
-            echo "VPS Domain Management Script v$VERSION"
+            echo "VPS Domain Management Script v$SCRIPT_VERSION"
             echo "Usage: $0 [OPTIONS]"
             echo
             echo "Options:"
