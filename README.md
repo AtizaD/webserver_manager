@@ -4,7 +4,7 @@
 
 A comprehensive, production-ready suite of bash scripts for managing web servers, domains, SSL certificates, and system configurations on Ubuntu/Debian VPS instances. Built with enterprise-level features, beautiful UI, and robust error handling.
 
-[![Version](https://img.shields.io/badge/version-2.0-blue.svg)](https://github.com/yourusername/vps-manager)
+[![Version](https://img.shields.io/badge/version-2.0-blue.svg)](https://github.com/AtizaD/webserver_manager)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Ubuntu](https://img.shields.io/badge/ubuntu-18.04%2B-orange.svg)](https://ubuntu.com/)
 [![Debian](https://img.shields.io/badge/debian-10%2B-red.svg)](https://debian.org/)
@@ -38,7 +38,7 @@ A comprehensive, production-ready suite of bash scripts for managing web servers
 ### Quick Start
 ```bash
 # Download and run the main launcher
-wget https://raw.githubusercontent.com/yourusername/vps-manager/main/main.sh
+wget https://raw.githubusercontent.com/AtizaD/webserver_manager/main/main.sh
 chmod +x main.sh
 sudo ./main.sh
 ```
@@ -46,9 +46,9 @@ sudo ./main.sh
 ### Manual Installation
 ```bash
 # Download all scripts
-wget https://raw.githubusercontent.com/yourusername/vps-manager/main/main.sh
-wget https://raw.githubusercontent.com/yourusername/vps-manager/main/server.sh
-wget https://raw.githubusercontent.com/yourusername/vps-manager/main/domain.sh
+wget https://raw.githubusercontent.com/AtizaD/webserver_manager/main/main.sh
+wget https://raw.githubusercontent.com/AtizaD/webserver_manager/main/server.sh
+wget https://raw.githubusercontent.com/AtizaD/webserver_manager/main/domain.sh
 
 # Make executable
 chmod +x *.sh
@@ -59,8 +59,8 @@ sudo ./main.sh
 
 ### Git Clone
 ```bash
-git clone https://github.com/yourusername/vps-manager.git
-cd vps-manager
+git clone https://github.com/AtizaD/webserver_manager.git
+cd webserver_manager
 chmod +x *.sh
 sudo ./main.sh
 ```
@@ -169,7 +169,7 @@ export VPS_MANAGER_DIR="/opt/vps_manager"
 export BACKUP_DIR="/opt/vps_manager/backups"
 
 # Optional: Custom repository URL
-export SCRIPT_BASE_URL="https://raw.githubusercontent.com/yourusername/vps-manager/main"
+export SCRIPT_BASE_URL="https://raw.githubusercontent.com/AtizaD/webserver_manager/main"
 ```
 
 ## 🔧 Advanced Usage
@@ -313,8 +313,8 @@ We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.
 ### Development Setup
 ```bash
 # Fork and clone the repository
-git clone https://github.com/yourusername/vps-manager.git
-cd vps-manager
+git clone https://github.com/AtizaD/webserver_manager.git
+cd webserver_manager
 
 # Create feature branch
 git checkout -b feature/your-feature-name
@@ -347,8 +347,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 📞 Support
 
 ### Community Support
-- **GitHub Issues**: [Report bugs or request features](https://github.com/yourusername/vps-manager/issues)
-- **Discussions**: [Community discussions and Q&A](https://github.com/yourusername/vps-manager/discussions)
+- **GitHub Issues**: [Report bugs or request features](https://github.com/AtizaD/webserver_manager/issues)
+- **Discussions**: [Community discussions and Q&A](https://github.com/AtizaD/webserver_manager/discussions)
 
 ### Commercial Support
 For enterprise support, custom development, or consultation services, please contact us at [support@example.com](mailto:support@example.com).
@@ -375,6 +375,6 @@ For enterprise support, custom development, or consultation services, please con
 
 **Made with ❤️ for the DevOps community**
 
-[⭐ Star this project](https://github.com/yourusername/vps-manager) • [🐛 Report Bug](https://github.com/yourusername/vps-manager/issues) • [💡 Request Feature](https://github.com/yourusername/vps-manager/issues)
+[⭐ Star this project](https://github.com/AtizaD/webserver_manager) • [🐛 Report Bug](https://github.com/AtizaD/webserver_manager/issues) • [💡 Request Feature](https://github.com/AtizaD/webserver_manager/issues)
 
-</di
+</div>
