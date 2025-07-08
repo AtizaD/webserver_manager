@@ -11,7 +11,7 @@ set -euo pipefail  # Exit on error, undefined vars, pipe failures
 # CONSTANTS AND CONFIGURATION
 # =============================================================================
 
-readonly VERSION="2.0"
+readonly SCRIPT_VERSION="2.0"
 readonly SCRIPT_NAME="$(basename "$0")"
 readonly SCRIPT_DIR="/opt/vps_manager"
 readonly LOG_FILE="$SCRIPT_DIR/logs/server.log"
@@ -192,9 +192,8 @@ check_root() {
 
 detect_os() {
     if [[ -f /etc/os-release ]]; then
-        source /etc/os-release
-        OS="$NAME"
-        VERSION_ID="$VERSION_ID"
+        OS=$(grep '^NAME=' /etc/os-release | cut -d'"' -f2)
+        VERSION_ID=$(grep '^VERSION_ID=' /etc/os-release | cut -d'"' -f2)
     else
         print_error "Cannot detect operating system"
         exit 1
@@ -1091,7 +1090,7 @@ create_system_backup() {
     "php_version": "$PHP_VERSION",
     "database_type": "$DATABASE_TYPE",
     "backup_size": "$(du -sh "$backup_path" | cut -f1)",
-    "script_version": "$VERSION"
+    "script_version": "$SCRIPT_VERSION"
 }
 EOF
     
@@ -1494,7 +1493,7 @@ backup_management_menu() {
 
 # Main function
 main() {
-    print_header "VPS Server Management - Production Ready v$VERSION"
+    print_header "VPS Server Management - Production Ready v$SCRIPT_VERSION"
     
     # Initial setup
     check_root
@@ -1504,7 +1503,7 @@ main() {
     mkdir -p "$SCRIPT_DIR"/{logs,backups,config}
     
     # Log startup
-    log_message "INFO" "VPS Server Manager started (v$VERSION)"
+    log_message "INFO" "VPS Server Manager started (v$SCRIPT_VERSION)"
     
     # Update system
     if confirm_action "Update system packages before starting?" "Y"; then
@@ -1538,7 +1537,7 @@ if [[ $# -gt 0 ]]; then
             exit 0
             ;;
         --help)
-            echo "VPS Server Management Script v$VERSION"
+            echo "VPS Server Management Script v$SCRIPT_VERSION"
             echo "Usage: $0 [OPTIONS]"
             echo
             echo "Options:"
