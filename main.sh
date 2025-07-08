@@ -11,7 +11,7 @@ set -euo pipefail  # Exit on error, undefined vars, pipe failures
 # CONSTANTS AND CONFIGURATION
 # =============================================================================
 
-readonly VERSION="2.0"
+readonly SCRIPT_VERSION="2.0"
 readonly SCRIPT_NAME="$(basename "$0")"
 readonly SCRIPT_DIR="/opt/vps_manager"
 readonly LOG_FILE="$SCRIPT_DIR/logs/main.log"
@@ -522,7 +522,7 @@ display_main_menu() {
 EOF
     echo -e "${NC}"
     
-    echo -e "${YELLOW}${BOLD}                    Professional VPS Management Suite v$VERSION${NC}"
+    echo -e "${YELLOW}${BOLD}                    Professional VPS Management Suite v$SCRIPT_VERSION${NC}"
     echo -e "${GRAY}${DIM}                          Ubuntu/Debian Server Management${NC}"
     echo
     
@@ -788,7 +788,7 @@ show_version_info() {
     print_header "Version Information"
     
     print_section "Local Script Versions"
-    printf "%-20s %s\n" "Main script:" "v$VERSION"
+    printf "%-20s %s\n" "Main script:" "v$SCRIPT_VERSION"
     printf "%-20s %s\n" "Server script:" "v$(get_script_version "$SERVER_SCRIPT")"
     printf "%-20s %s\n" "Domain script:" "v$(get_script_version "$DOMAIN_SCRIPT")"
     
@@ -894,7 +894,7 @@ initialize_environment() {
 # VPS Manager Configuration
 # Generated on $(date)
 
-SCRIPT_VERSION=$VERSION
+SCRIPT_VERSION=$SCRIPT_VERSION
 INSTALLATION_DATE=$(date)
 REPOSITORY_URL=$SCRIPT_BASE_URL
 EOF
@@ -913,7 +913,7 @@ EOF
 
 show_help() {
     cat << EOF
-${BOLD}VPS Management Suite v$VERSION${NC}
+${BOLD}VPS Management Suite v$SCRIPT_VERSION${NC}
 
 ${BOLD}USAGE:${NC}
     $SCRIPT_NAME [OPTIONS]
