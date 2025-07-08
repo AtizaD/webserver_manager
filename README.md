@@ -1,379 +1,171 @@
 # 🚀 VPS Management Suite
 
-> **Professional-grade VPS management tools for Ubuntu/Debian servers**
-
-A comprehensive, production-ready suite of bash scripts for managing web servers, domains, SSL certificates, and system configurations on Ubuntu/Debian VPS instances. Built with enterprise-level features, beautiful UI, and robust error handling.
+> **Professional Ubuntu/Debian server management in 3 smart scripts**
 
 [![Version](https://img.shields.io/badge/version-2.0-blue.svg)](https://github.com/AtizaD/webserver_manager)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Ubuntu](https://img.shields.io/badge/ubuntu-18.04%2B-orange.svg)](https://ubuntu.com/)
 [![Debian](https://img.shields.io/badge/debian-10%2B-red.svg)](https://debian.org/)
 
-## ✨ Features
+## ⚡ Quick Start
 
-### 🎯 **Core Capabilities**
-- **Intelligent Web Server Management** - Apache & Nginx with seamless switching
-- **Advanced Domain Management** - Virtual hosts, SSL certificates, DNS checking
-- **Database Management** - MySQL, MariaDB, PostgreSQL with optimized configurations
-- **Automated SSL/TLS** - Let's Encrypt integration with auto-renewal
-- **System Backup & Restore** - Google Drive integration with compression
-- **Security Hardening** - UFW firewall, Fail2Ban, security headers
-
-### 🎨 **User Experience**
-- **Beautiful Terminal UI** - Color-coded output, progress bars, spinners
-- **Interactive Menus** - Intuitive navigation with confirmation dialogs
-- **Real-time Progress** - Visual feedback for long-running operations
-- **Smart Validation** - Input validation with helpful error messages
-- **Comprehensive Logging** - Detailed audit trails and troubleshooting
-
-### 🛡️ **Production Ready**
-- **Error Handling** - Graceful failure recovery with rollback capabilities
-- **Signal Handling** - Clean shutdown on interruption (Ctrl+C)
-- **Version Management** - Automatic script updates with backup/restore
-- **Network Resilience** - Timeout handling and retry mechanisms
-- **Security First** - Secure defaults, input sanitization, permission management
-
-## 📦 Installation
-
-### Quick Start
-
-# Download and run the main launcher
 ```bash
-bash <(curl -s https://raw.githubusercontent.com/AtizaD/webserver_manager/main/main.sh) &
+# One-line installation
+bash <(curl -s https://raw.githubusercontent.com/AtizaD/webserver_manager/main/main.sh)
 ```
 
-### Manual Installation
-```bash
-# Download all scripts
-wget https://raw.githubusercontent.com/AtizaD/webserver_manager/main/main.sh
-wget https://raw.githubusercontent.com/AtizaD/webserver_manager/main/server.sh
-wget https://raw.githubusercontent.com/AtizaD/webserver_manager/main/domain.sh
+## 🎯 What It Does
 
-# Make executable
-chmod +x *.sh
+**🖥️ Server Manager** - Apache/Nginx, PHP, MySQL/MariaDB/PostgreSQL, security, backups  
+**🌐 Domain Manager** - Virtual hosts, SSL certificates, DNS validation  
+**🎛️ Main Hub** - Beautiful UI, auto-updates, LAMP/LEMP wizards  
 
-# Run main launcher
-sudo ./main.sh
-```
+## ✨ Key Features
 
-### Git Clone
-```bash
-git clone https://github.com/AtizaD/webserver_manager.git
-cd webserver_manager
-chmod +x *.sh
-sudo ./main.sh
-```
+- **One-click LAMP/LEMP** setup with optimized configs
+- **Auto SSL** certificates with Let's Encrypt + renewal
+- **Smart switching** between Apache ↔ Nginx 
+- **Google Drive** backups with compression
+- **Security hardening** (UFW + Fail2Ban)
+- **Beautiful terminal UI** with progress bars & spinners
 
-## 🏗️ Architecture
+## 🎨 Interface Preview
 
-The suite consists of three main components:
-
-### `main.sh` - Central Management Hub
-- **Auto-downloading** - Downloads and updates other scripts automatically
-- **Quick Setup Wizards** - LAMP/LEMP stack automation
-- **System Monitoring** - Resource usage, service status, health checks
-- **Update Management** - Version checking and intelligent updates
-
-### `server.sh` - Server Configuration Manager
-- **Web Servers** - Apache/Nginx installation and switching
-- **PHP Management** - Latest versions with optimized configurations
-- **Database Systems** - MySQL, MariaDB, PostgreSQL with security
-- **Backup Systems** - Google Drive integration and system snapshots
-
-### `domain.sh` - Domain & SSL Manager
-- **Virtual Hosts** - Automatic configuration generation
-- **SSL Certificates** - Let's Encrypt automation with monitoring
-- **DNS Validation** - Health checks and troubleshooting
-- **Domain Monitoring** - Status tracking and renewal alerts
-
-## 🚀 Usage Examples
-
-### Interactive Mode (Recommended)
-```bash
-# Launch main interface
-sudo ./main.sh
-
-# Direct access to specific managers
-sudo ./main.sh --server    # Server management
-sudo ./main.sh --domain    # Domain management
-```
-
-### Quick Setup Wizards
-```bash
-# Automated LAMP stack (Apache + MySQL + PHP)
-sudo ./main.sh --setup
-# Choose option 1 for LAMP
-
-# Automated LEMP stack (Nginx + MySQL + PHP)
-sudo ./server.sh --lemp
-
-# Direct installations
-sudo ./server.sh --lamp    # LAMP stack
-sudo ./server.sh --lemp    # LEMP stack
-```
-
-### Command Line Interface
-```bash
-# Domain management
-sudo ./domain.sh --add example.com        # Add domain
-sudo ./domain.sh --ssl example.com        # Install SSL
-sudo ./domain.sh --list                   # List domains
-
-# System operations
-sudo ./main.sh --status                   # System status
-sudo ./main.sh --update                   # Update scripts
-sudo ./main.sh --check-updates            # Check for updates
-```
-
-## 📋 Requirements
-
-### System Requirements
-- **OS**: Ubuntu 18.04+ or Debian 10+
-- **RAM**: 1GB minimum, 2GB recommended
-- **Disk**: 10GB free space minimum
-- **Network**: Internet connection for package downloads
-
-### Access Requirements
-- **Root privileges** (`sudo` access)
-- **SSH access** (for remote management)
-- **Port access**: 22 (SSH), 80 (HTTP), 443 (HTTPS)
-
-### Optional Requirements
-- **Domain name** (for SSL certificates)
-- **Google Drive account** (for cloud backups)
-- **Email address** (for Let's Encrypt notifications)
-
-## 🎛️ Configuration
-
-### Directory Structure
-```
-/opt/vps_manager/
-├── logs/
-│   ├── main.log
-│   ├── server.log
-│   └── domain.log
-├── config/
-│   ├── main.conf
-│   └── domains.conf
-└── backups/
-    └── system_backup_YYYYMMDD_HHMMSS.tar.gz
-```
-
-### Environment Variables
-```bash
-# Optional: Customize installation directory
-export VPS_MANAGER_DIR="/opt/vps_manager"
-
-# Optional: Set default backup location
-export BACKUP_DIR="/opt/vps_manager/backups"
-
-# Optional: Custom repository URL
-export SCRIPT_BASE_URL="https://raw.githubusercontent.com/AtizaD/webserver_manager/main"
-```
-
-## 🔧 Advanced Usage
-
-### Automated Deployments
-```bash
-# Unattended LAMP installation
-sudo ./server.sh --lamp
-
-# Batch domain addition
-for domain in example1.com example2.com; do
-    sudo ./domain.sh --add "$domain"
-    sudo ./domain.sh --ssl "$domain"
-done
-```
-
-### Backup and Restore
-```bash
-# Setup Google Drive backup
-sudo ./server.sh
-# Choose: Backup Management > Setup Google Drive backup
-
-# Create system backup
-sudo ./server.sh
-# Choose: Backup Management > Create System Backup
-
-# Automated backup with cron
-0 2 * * 0 /path/to/server.sh --backup-create
-```
-
-### SSL Management
-```bash
-# Bulk SSL installation
-sudo ./domain.sh --ssl-bulk
-
-# Certificate monitoring
-sudo ./domain.sh --ssl-status
-
-# Auto-renewal setup
-sudo ./domain.sh
-# Choose: SSL Management > Setup Auto-Renewal
-```
-
-## 📊 Screenshots
-
-### Main Interface
 ```
   ╔══════════════════════════════════════════════════════════════════════════════╗
-  ║  ██╗   ██╗██████╗ ███████╗    ███╗   ███╗ █████╗ ███╗   ██╗ █████╗  ██████╗  ║
-  ║  ██║   ██║██╔══██╗██╔════╝    ████╗ ████║██╔══██╗████╗  ██║██╔══██╗██╔════╝  ║
-  ║  ██║   ██║██████╔╝███████╗    ██╔████╔██║███████║██╔██╗ ██║███████║██║  ███╗ ║
-  ║  ╚██╗ ██╔╝██╔═══╝ ╚════██║    ██║╚██╔╝██║██╔══██║██║╚██╗██║██╔══██║██║   ██║ ║
-  ║   ╚████╔╝ ██║     ███████║    ██║ ╚═╝ ██║██║  ██║██║ ╚████║██║  ██║╚██████╔╝ ║
-  ║    ╚═══╝  ╚═╝     ╚══════╝    ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝ ╚═════╝  ║
+  ║                    🚀 VPS MANAGEMENT SUITE v2.0                           ║
   ╚══════════════════════════════════════════════════════════════════════════════╝
 
-                    Professional VPS Management Suite v2.0
-                          Ubuntu/Debian Server Management
-
 System: Ubuntu 22.04  IP: 203.0.113.1
-Services: Apache: Running  Nginx: Stopped  Database: MySQL
-```
+Services: Apache: ✓ Running  MySQL: ✓ Running  SSL: ✓ 3 domains
 
-### Progress Indicators
-```
-Progress: [████████████████████████████████████████████████████] 100% Installing PHP 8.2
-⠋ Installing SSL certificate with Apache...
+Progress: [████████████████████████████████████████████████████] 100% Installing SSL
+⠋ Configuring virtual host...
 ✓ Domain example.com added successfully
 ```
 
-## 🔍 Troubleshooting
+## 🛠️ Usage
 
-### Common Issues
-
-#### "Permission denied" errors
+### Interactive Mode (Recommended)
 ```bash
-# Ensure scripts are executable
+sudo ./main.sh                 # Main interface
+sudo ./server.sh               # Server management  
+sudo ./domain.sh               # Domain management
+```
+
+### Quick Commands
+```bash
+# Automated stacks
+sudo ./server.sh --lamp        # Apache + MySQL + PHP
+sudo ./server.sh --lemp        # Nginx + MySQL + PHP
+
+# Domain operations  
+sudo ./domain.sh --add example.com
+sudo ./domain.sh --ssl example.com
+sudo ./domain.sh --list
+
+# System operations
+sudo ./main.sh --status        # System overview
+sudo ./main.sh --update        # Update scripts
+```
+
+## 📦 Manual Installation
+
+```bash
+# Download all scripts
+wget https://raw.githubusercontent.com/AtizaD/webserver_manager/main/{main,server,domain}.sh
 chmod +x *.sh
-
-# Run with sudo
-sudo ./main.sh
-```
-
-#### Web server won't start
-```bash
-# Check for port conflicts
-sudo netstat -tlnp | grep :80
-sudo netstat -tlnp | grep :443
-
-# Check logs
-sudo journalctl -u apache2 -f
-sudo journalctl -u nginx -f
-```
-
-#### SSL certificate installation fails
-```bash
-# Verify domain points to server
-dig +short example.com
-
-# Check firewall
-sudo ufw status
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-
-# Verify web server is accessible
-curl -I http://example.com
-```
-
-#### Google Drive backup issues
-```bash
-# Reconfigure rclone
-rclone config
-
-# Test connection
-rclone lsd gdrive:
-
-# Check logs
-tail -f /opt/vps_manager/logs/server.log
-```
-
-### Debug Mode
-```bash
-# Enable debug output
-export DEBUG=1
 sudo ./main.sh
 
-# View detailed logs
-tail -f /opt/vps_manager/logs/*.log
+# Or clone repository
+git clone https://github.com/AtizaD/webserver_manager.git
+cd webserver_manager && chmod +x *.sh && sudo ./main.sh
 ```
 
-### Support Resources
-- **Logs Location**: `/opt/vps_manager/logs/`
-- **Configuration**: `/opt/vps_manager/config/`
-- **Backup Files**: `/opt/vps_manager/backups/`
-- **System Status**: `sudo ./main.sh --status`
+## ⚙️ Requirements
+
+- **OS**: Ubuntu 18.04+ or Debian 10+
+- **RAM**: 1GB+ (2GB recommended)
+- **Access**: Root/sudo privileges
+- **Network**: Ports 22, 80, 443 open
+
+## 🔧 Configuration
+
+Scripts auto-create structure in `/opt/vps_manager/`:
+```
+/opt/vps_manager/
+├── logs/           # Operation logs
+├── config/         # Domain tracking
+└── backups/        # System snapshots
+```
+
+## 🆘 Quick Fixes
+
+**Permission denied**
+```bash
+chmod +x *.sh && sudo ./main.sh
+```
+
+**Web server won't start**
+```bash
+sudo netstat -tlnp | grep :80    # Check port conflicts
+sudo journalctl -u apache2 -f    # Check logs
+```
+
+**SSL fails**
+```bash
+dig +short example.com            # Verify DNS
+sudo ufw allow 80,443/tcp         # Open firewall
+curl -I http://example.com        # Test accessibility
+```
+
+**Variable conflicts**
+```bash
+# If you see "readonly variable" errors:
+killall bash && sudo ./main.sh
+```
+
+## 🎯 Smart Features
+
+### Auto-Detection
+- Detects existing web servers and configurations
+- Smart version checking with auto-updates
+- DNS validation before SSL installation
+
+### Production Ready
+- Comprehensive error handling with rollback
+- Security-first defaults and hardening
+- Optimized configurations for performance
+
+### User Experience  
+- Color-coded status indicators
+- Real-time progress tracking
+- Confirmation dialogs for destructive actions
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
-
-### Development Setup
 ```bash
-# Fork and clone the repository
 git clone https://github.com/AtizaD/webserver_manager.git
 cd webserver_manager
-
-# Create feature branch
-git checkout -b feature/your-feature-name
-
-# Make changes and test
-sudo ./main.sh --status
-
-# Submit pull request
+# Make changes and submit PR
 ```
-
-### Code Style
-- Follow existing bash scripting conventions
-- Include comprehensive error handling
-- Add logging for all major operations
-- Update documentation for new features
-- Test on Ubuntu 20.04+ and Debian 10+
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- **Let's Encrypt** - Free SSL certificates
-- **Ondrej Surý** - PHP PPA maintenance
-- **Rclone** - Cloud storage integration
-- **UFW/Fail2Ban** - Security tools
-- **Community Contributors** - Bug reports and feature requests
 
 ## 📞 Support
 
-### Community Support
-- **GitHub Issues**: [Report bugs or request features](https://github.com/AtizaD/webserver_manager/issues)
-- **Discussions**: [Community discussions and Q&A](https://github.com/AtizaD/webserver_manager/discussions)
+- **Issues**: [GitHub Issues](https://github.com/AtizaD/webserver_manager/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/AtizaD/webserver_manager/discussions)
+- **Logs**: `/opt/vps_manager/logs/` for troubleshooting
 
-### Commercial Support
-For enterprise support, custom development, or consultation services, please contact us at [support@example.com](mailto:support@example.com).
+## 📄 License
 
-## 🗺️ Roadmap
-
-### v2.1 (Planned)
-- [ ] Docker container management
-- [ ] Automatic security updates
-- [ ] Web-based dashboard
-- [ ] Multi-server management
-- [ ] Advanced monitoring and alerts
-
-### v2.2 (Future)
-- [ ] Kubernetes integration
-- [ ] CI/CD pipeline support
-- [ ] Custom app templates
-- [ ] API access
-- [ ] Mobile app companion
+MIT License - see [LICENSE](LICENSE) file
 
 ---
 
 <div align="center">
 
-**Made with ❤️ for the DevOps community**
+**⭐ Star this repo if it helped you!**
 
-[⭐ Star this project](https://github.com/AtizaD/webserver_manager) • [🐛 Report Bug](https://github.com/AtizaD/webserver_manager/issues) • [💡 Request Feature](https://github.com/AtizaD/webserver_manager/issues)
+[⭐ Star](https://github.com/AtizaD/webserver_manager) • [🐛 Report Bug](https://github.com/AtizaD/webserver_manager/issues) • [💡 Request Feature](https://github.com/AtizaD/webserver_manager/issues)
 
 </div>
