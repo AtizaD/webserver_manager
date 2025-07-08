@@ -1,10 +1,10 @@
-
 #!/bin/bash
 
-# VPS Domain Manager - Clean Version
+# VPS Domain Manager - Clean Version  
 # Version: 2.1
 
-set -euo pipefail
+# Set safer defaults - removed 'u' flag to handle unbound variables gracefully
+set -eo pipefail
 
 readonly SCRIPT_VERSION="2.1"
 readonly SCRIPT_DIR="/opt/vps_manager"
@@ -772,57 +772,71 @@ main() {
     show_main_menu
 }
 
-# CLI arguments
-case "${1:-}" in
-    --add)
-        check_root
-        get_server_ip >/dev/null
-        detect_webserver
-        ensure_webserver
-        auto_detect_domains
-        
-        if [[ -n "${2:-}" ]] && validate_domain "$2"; then
-            domain="$2"
-            if [[ "$CURRENT_WEBSERVER" == "apache" ]]; then
-                create_apache_vhost "$domain"
-            elif [[ "$CURRENT_WEBSERVER" == "nginx" ]]; then
-                create_nginx_vhost "$domain"
+# Main execution - handle arguments
+if [[ ${#} -eq 0 ]]; then
+    # No arguments - run interactive mode
+    main
+else
+    # Handle command line arguments
+    case "$1" in
+        --add)
+            check_root
+            get_server_ip >/dev/null
+            detect_webserver
+            ensure_webserver
+            auto_detect_domains
+            
+            if [[ -n "${2:-}" ]] && validate_domain "${2:-}"; then
+                domain="$2"
+                if [[ "$CURRENT_WEBSERVER" == "apache" ]]; then
+                    create_apache_vhost "$domain"
+                elif [[ "$CURRENT_WEBSERVER" == "nginx" ]]; then
+                    create_nginx_vhost "$domain"
+                fi
+                add_domain_to_list "$domain" "$CURRENT_WEBSERVER" "false" "$DOMAINS_ROOT/$domain"
+                print_success "Domain $domain added"
+            else
+                print_error "Usage: $0 --add <domain>"
+                exit 1
             fi
-            add_domain_to_list "$domain" "$CURRENT_WEBSERVER" "false" "$DOMAINS_ROOT/$domain"
-            print_success "Domain $domain added"
-        else
-            print_error "Usage: $0 --add <domain>"
-        fi
-        ;;
-    --list)
-        if [[ -f "$DOMAIN_LIST_FILE" ]]; then
-            list_domains_detailed
-        else
-            print_warning "No domains configured"
-        fi
-        ;;
-    --ssl)
-        check_root
-        get_server_ip >/dev/null
-        detect_webserver
-        
-        if [[ -n "${2:-}" ]] && validate_domain "$2"; then
-            install_ssl_certificate "$2"
-        else
-            print_error "Usage: $0 --ssl <domain>"
-        fi
-        ;;
-    --help)
-        echo "VPS Domain Manager v$SCRIPT_VERSION"
-        echo "Usage: $0 [OPTIONS]"
-        echo
-        echo "Options:"
-        echo "  --add <domain>    Add domain"
-        echo "  --list            List domains"
-        echo "  --ssl <domain>    Install SSL"
-        echo "  --help            Show help"
-        ;;
-    *)
-        main
-        ;;
-esac
+            ;;
+        --list)
+            check_root
+            get_server_ip >/dev/null
+            detect_webserver
+            auto_detect_domains
+            if [[ -f "$DOMAIN_LIST_FILE" ]]; then
+                list_domains_detailed
+            else
+                print_warning "No domains configured"
+            fi
+            ;;
+        --ssl)
+            check_root
+            get_server_ip >/dev/null
+            detect_webserver
+            
+            if [[ -n "${2:-}" ]] && validate_domain "${2:-}"; then
+                install_ssl_certificate "$2"
+            else
+                print_error "Usage: $0 --ssl <domain>"
+                exit 1
+            fi
+            ;;
+        --help)
+            echo "VPS Domain Manager v$SCRIPT_VERSION"
+            echo "Usage: $0 [OPTIONS]"
+            echo
+            echo "Options:"
+            echo "  --add <domain>    Add domain"
+            echo "  --list            List domains"
+            echo "  --ssl <domain>    Install SSL"
+            echo "  --help            Show help"
+            ;;
+        *)
+            print_error "Unknown option: $1"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+    esac
+fi
