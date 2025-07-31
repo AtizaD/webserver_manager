@@ -1,170 +1,282 @@
-# 🚀 VPS Management Suite
+# 🚀 Professional Web Server Manager
 
-> **Professional Ubuntu/Debian server management in 3 smart scripts**
+A comprehensive, intelligent web server management system for Ubuntu 22.04 with seamless Apache/Nginx switching, smart package detection, and advanced domain management.
 
-[![Version](https://img.shields.io/badge/version-2.0-blue.svg)](https://github.com/AtizaD/webserver_manager)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Ubuntu](https://img.shields.io/badge/ubuntu-18.04%2B-orange.svg)](https://ubuntu.com/)
-[![Debian](https://img.shields.io/badge/debian-10%2B-red.svg)](https://debian.org/)
+## ✨ Features
 
-## ⚡ Quick Start
+### 🔄 **Smart Server Switching**
+- **Seamless Apache ↔ Nginx switching** with automatic site migration
+- **Zero-downtime** configuration testing and rollback
+- **Intelligent config conversion** preserving all settings
+- **Automatic backup** before any changes
 
-```bash
-# One-line installation
-wget -O main.sh https://raw.githubusercontent.com/AtizaD/webserver_manager/main/main.sh && chmod +x main.sh && sudo ./main.sh
-```
+### 🧠 **Intelligent Package Management**
+- **Smart detection** - skips already installed packages
+- **Version compatibility** checking and upgrades
+- **Selective installation** - only installs what's missing
+- **Fast re-runs** - no redundant installations
 
-## 🎯 What It Does
+### 🛡️ **Production-Ready Security**
+- **Optimized configurations** for both Apache and Nginx
+- **Security headers** and performance tuning
+- **Firewall management** with UFW
+- **SSL certificate** automation with Let's Encrypt
 
-**🖥️ Server Manager** - Apache/Nginx, PHP, MySQL/MariaDB/PostgreSQL, security, backups  
-**🌐 Domain Manager** - Virtual hosts, SSL certificates, DNS validation  
-**🎛️ Main Hub** - Beautiful UI, auto-updates, LAMP/LEMP wizards  
+### 🌐 **Advanced Domain Management**
+- **Interactive domain** addition and removal
+- **SSL certificate** management (add/remove/renew)
+- **Site status** monitoring and diagnostics
+- **Real-time system** information dashboard
 
-## ✨ Key Features
+## 📦 **Complete Stack Support**
 
-- **One-click LAMP/LEMP** setup with optimized configs
-- **Auto SSL** certificates with Let's Encrypt + renewal
-- **Smart switching** between Apache ↔ Nginx 
-- **Google Drive** backups with compression
-- **Security hardening** (UFW + Fail2Ban)
-- **Beautiful terminal UI** with progress bars & spinners
+### **LEMP Stack** (Linux + Nginx + MariaDB + PHP)
+- **Nginx** with optimized performance settings
+- **PHP 8.2** with 20+ extensions
+- **MariaDB** (superior to MySQL)
+- **Composer** for PHP package management
+- **Node.js + npm** for modern development
 
-## 🎨 Interface Preview
+### **LAMP Stack** (Linux + Apache + MariaDB + PHP)
+- **Apache** with mod_rewrite and security modules
+- **PHP 8.2** with full extension suite
+- **MariaDB** database server
+- **Complete development** environment
 
-```
-  ╔══════════════════════════════════════════════════════════════════════════════╗
-  ║                    🚀 VPS MANAGEMENT SUITE v2.0                           ║
-  ╚══════════════════════════════════════════════════════════════════════════════╝
+## 🚀 **Quick Start**
 
-System: Ubuntu 22.04  IP: 203.0.113.1
-Services: Apache: ✓ Running  MySQL: ✓ Running  SSL: ✓ 3 domains
-
-Progress: [████████████████████████████████████████████████████] 100% Installing SSL
-⠋ Configuring virtual host...
-✓ Domain example.com added successfully
-```
-
-## 🛠️ Usage
-
-### Interactive Mode (Recommended)
-```bash
-sudo ./main.sh                 # Main interface
-sudo ./server.sh               # Server management  
-sudo ./domain.sh               # Domain management
-```
-
-### Quick Commands
-```bash
-# Automated stacks
-sudo ./server.sh --lamp        # Apache + MySQL + PHP
-sudo ./server.sh --lemp        # Nginx + MySQL + PHP
-
-# Domain operations  
-sudo ./domain.sh --add example.com
-sudo ./domain.sh --ssl example.com
-sudo ./domain.sh --list
-
-# System operations
-sudo ./main.sh --status        # System overview
-sudo ./main.sh --update        # Update scripts
-```
-
-## 📦 Manual Installation
+### **Installation**
 
 ```bash
-# Download all scripts
-# Download the fixed version
-wget -O main.sh https://raw.githubusercontent.com/AtizaD/webserver_manager/main/main.sh && chmod +x main.sh && sudo ./main.sh
+# Download the scripts
+wget https://raw.githubusercontent.com/AtizaD/webserver_manager/main/server-manager
+wget https://raw.githubusercontent.com/AtizaD/webserver_manager/main/domain-manager
 
-# Or clone repository
-git clone https://github.com/AtizaD/webserver_manager.git
-cd webserver_manager && chmod +x *.sh && sudo ./main.sh
+# Make executable
+chmod +x server-manager domain-manager
+
+# Move to system path
+sudo mv server-manager domain-manager /usr/local/bin/
+
+# Launch interactive interface
+sudo server-manager
 ```
 
-## ⚙️ Requirements
-
-- **OS**: Ubuntu 18.04+ or Debian 10+
-- **RAM**: 1GB+ (2GB recommended)
-- **Access**: Root/sudo privileges
-- **Network**: Ports 22, 80, 443 open
-
-## 🔧 Configuration
-
-Scripts auto-create structure in `/opt/vps_manager/`:
-```
-/opt/vps_manager/
-├── logs/           # Operation logs
-├── config/         # Domain tracking
-└── backups/        # System snapshots
-```
-
-## 🆘 Quick Fixes
-
-**Permission denied**
-```bash
-chmod +x *.sh && sudo ./main.sh
-```
-
-**Web server won't start**
-```bash
-sudo netstat -tlnp | grep :80    # Check port conflicts
-sudo journalctl -u apache2 -f    # Check logs
-```
-
-**SSL fails**
-```bash
-dig +short example.com            # Verify DNS
-sudo ufw allow 80,443/tcp         # Open firewall
-curl -I http://example.com        # Test accessibility
-```
-
-**Variable conflicts**
-```bash
-# If you see "readonly variable" errors:
-killall bash && sudo ./main.sh
-```
-
-## 🎯 Smart Features
-
-### Auto-Detection
-- Detects existing web servers and configurations
-- Smart version checking with auto-updates
-- DNS validation before SSL installation
-
-### Production Ready
-- Comprehensive error handling with rollback
-- Security-first defaults and hardening
-- Optimized configurations for performance
-
-### User Experience  
-- Color-coded status indicators
-- Real-time progress tracking
-- Confirmation dialogs for destructive actions
-
-## 🤝 Contributing
+### **Quick Commands**
 
 ```bash
-git clone https://github.com/AtizaD/webserver_manager.git
-cd webserver_manager
-# Make changes and submit PR
+# Server Management
+sudo server-manager install-lemp    # Install LEMP stack
+sudo server-manager install-lamp    # Install LAMP stack
+sudo server-manager switch-nginx    # Switch to Nginx
+sudo server-manager switch-apache   # Switch to Apache
+sudo server-manager status          # Show system status
+
+# Domain Management
+sudo domain-manager add example.com      # Add domain
+sudo domain-manager ssl-add example.com  # Add SSL certificate
+sudo domain-manager list                 # List all domains
+sudo domain-manager status example.com   # Check domain status
 ```
 
-## 📞 Support
+## 🎛️ **Interactive Interfaces**
 
-- **Issues**: [GitHub Issues](https://github.com/AtizaD/webserver_manager/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/AtizaD/webserver_manager/discussions)
-- **Logs**: `/opt/vps_manager/logs/` for troubleshooting
+### **Server Manager Menu**
+```
+╔══════════════════════════════════════════════════════════════╗
+║                    Server Manager v1.0                      ║
+║                 Web Server Management                       ║
+╚══════════════════════════════════════════════════════════════╝
 
-## 📄 License
+Current Server: Nginx Running
 
-MIT License - see [LICENSE](LICENSE) file
+🚀 Installation Options:
+1. Install LEMP Stack (Linux + Nginx + MySQL + PHP)
+2. Install LAMP Stack (Linux + Apache + MySQL + PHP)
+3. Install Individual Components
+
+🔄 Server Management:
+4. Switch to Apache (with site migration)
+5. Restart Nginx
+
+📊 Information:
+6. Show System Status
+7. Show Configuration Backups
+
+🌐 Domain Management:
+8. Domain Manager (Add/Remove Domains & SSL)
+
+0. Exit
+```
+
+### **Domain Manager Menu**
+```
+╔══════════════════════════════════════════════════════════════╗
+║                    Domain Manager v1.0                      ║
+║                  Interactive Management                     ║
+╚══════════════════════════════════════════════════════════════╝
+
+📊 System Status:
+   Server:              nginx (Running)
+   Available Domains:   3
+   SSL Certificates:    2
+   Public IP:           142.93.245.178
+   Uptime:              up 2 days, 5 hours
+
+🚀 Management Options:
+1. Add Domain
+2. Remove Domain
+3. List All Domains
+4. Check Domain Status
+5. Enable Domain
+6. Disable Domain
+7. Add SSL Certificate
+8. Remove SSL Certificate
+9. Renew SSL Certificates
+10. Server Information
+11. Server Manager (Switch Apache/Nginx)
+
+0. Exit
+```
+
+## 🧠 **Smart Features**
+
+### **Context-Aware Menus**
+- **Dynamic options** based on current server state
+- **Intelligent suggestions** for optimal workflows
+- **Conflict detection** with guided resolution
+- **Safe operations** with automatic validation
+
+### **Advanced Package Detection**
+- **Real-time status** checking for all components
+- **Version compatibility** validation
+- **Dependency resolution** and conflict handling
+- **Graceful failure** recovery with detailed logging
+
+### **Site Migration Intelligence**
+- **Automatic config** translation between Apache/Nginx
+- **Document root** preservation and validation
+- **SSL certificate** handling during switches
+- **Performance optimization** maintenance
+
+## 🛡️ **Security & Performance**
+
+### **Optimized Configurations**
+- **Nginx**: Gzip compression, security headers, rate limiting
+- **Apache**: ModSecurity, compression, caching headers
+- **PHP**: OPcache, security settings, performance tuning
+- **MariaDB**: Secure installation and optimization
+
+### **SSL Management**
+- **Automatic certificate** generation with Let's Encrypt
+- **Multi-domain support** with wildcard options
+- **Auto-renewal** with cron integration
+- **Perfect Forward Secrecy** and modern cipher suites
+
+## 📊 **System Requirements**
+
+- **OS**: Ubuntu 22.04 LTS (recommended)
+- **Memory**: 1GB RAM minimum, 2GB+ recommended
+- **Storage**: 10GB free space minimum
+- **Network**: Internet connection for package downloads
+- **Privileges**: Root/sudo access required
+
+## 🎯 **Use Cases**
+
+### **Perfect For:**
+- **Web developers** managing multiple projects
+- **System administrators** handling web servers
+- **DevOps engineers** automating deployments
+- **Small businesses** running websites
+- **Agencies** managing client sites
+
+### **Ideal Scenarios:**
+- **Server migration** from Apache to Nginx (or vice versa)
+- **New server** setup with complete LEMP/LAMP stack
+- **Domain management** with SSL automation
+- **Performance optimization** and security hardening
+- **Development environment** setup
+
+## 🔄 **Migration Workflows**
+
+### **Apache to Nginx Migration**
+1. **Backup** current Apache configuration
+2. **Install** Nginx with optimized settings
+3. **Convert** Apache virtual hosts to Nginx server blocks
+4. **Test** configuration validity
+5. **Switch** services with zero downtime
+6. **Verify** all sites are working correctly
+
+### **LAMP to LEMP Conversion**
+1. **Detect** current LAMP components
+2. **Preserve** all databases and websites
+3. **Install** missing LEMP components
+4. **Migrate** server configurations
+5. **Update** firewall rules
+6. **Complete** with performance testing
+
+## 📈 **Performance Benefits**
+
+### **Nginx Advantages**
+- **High concurrency** handling (10,000+ connections)
+- **Low memory** footprint
+- **Better static** file serving
+- **Advanced load** balancing capabilities
+
+### **Apache Advantages**
+- **Extensive module** ecosystem
+- **Better PHP** integration options
+- **Flexible configuration** with .htaccess
+- **Mature documentation** and community
+
+## 🔧 **Technical Details**
+
+### **Components Installed**
+- **Web Servers**: Nginx 1.22+ or Apache 2.4+
+- **PHP**: 8.2 with extensions (mysql, gd, curl, zip, xml, mbstring, bcmath, intl, soap, opcache, xdebug)
+- **Database**: MariaDB 10.6+ (MySQL compatible)
+- **Package Managers**: Composer (PHP), npm (Node.js)
+- **Runtime**: Node.js LTS with Yarn and PM2
+- **Security**: UFW firewall, Fail2ban, SSL certificates
+
+### **Directory Structure**
+```
+/etc/nginx/sites-available/    # Nginx virtual hosts
+/etc/nginx/sites-enabled/      # Active Nginx sites
+/etc/apache2/sites-available/  # Apache virtual hosts  
+/etc/apache2/sites-enabled/    # Active Apache sites
+/var/www/                      # Web document roots
+/var/backups/server-manager/   # Configuration backups
+/var/log/server-manager.log    # Management logs
+```
+
+## 🤝 **Contributing**
+
+We welcome contributions! Please feel free to:
+- **Report bugs** and suggest features
+- **Submit pull requests** with improvements
+- **Share your** deployment experiences
+- **Help improve** documentation
+
+## 📝 **License**
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🆘 **Support**
+
+- **Documentation**: Check the inline help with `--help` commands
+- **Logs**: Review `/var/log/server-manager.log` for detailed information
+- **Issues**: Report problems via GitHub Issues
+- **Community**: Share experiences and get help from other users
+
+## 🚀 **Roadmap**
+
+- **Multi-OS support** (CentOS, Debian)
+- **Docker integration** for containerized deployments  
+- **Database cluster** management
+- **Advanced monitoring** and alerting
+- **API interface** for programmatic control
 
 ---
 
-<div align="center">
-
-**⭐ Star this repo if it helped you!**
-
-[⭐ Star](https://github.com/AtizaD/webserver_manager) • [🐛 Report Bug](https://github.com/AtizaD/webserver_manager/issues) • [💡 Request Feature](https://github.com/AtizaD/webserver_manager/issues)
-
-</div>
+**Built with ❤️ for system administrators and web developers who value reliability, security, and ease of use.**
