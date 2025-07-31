@@ -1,6 +1,6 @@
 # 🚀 Professional Web Server Manager
 
-A comprehensive, intelligent web server management system for Ubuntu 22.04 with seamless Apache/Nginx switching, smart package detection, and advanced domain management.
+A comprehensive, intelligent web server management system for Ubuntu 22.04 with seamless Apache/Nginx switching, smart package detection, and advanced domain management using **MySQL** database.
 
 ## ✨ Features
 
@@ -30,17 +30,17 @@ A comprehensive, intelligent web server management system for Ubuntu 22.04 with 
 
 ## 📦 **Complete Stack Support**
 
-### **LEMP Stack** (Linux + Nginx + MariaDB + PHP)
+### **LEMP Stack** (Linux + Nginx + MySQL + PHP)
 - **Nginx** with optimized performance settings
 - **PHP 8.2** with 20+ extensions
-- **MariaDB** (superior to MySQL)
+- **MySQL** database server (reliable and industry-standard)
 - **Composer** for PHP package management
 - **Node.js + npm** for modern development
 
-### **LAMP Stack** (Linux + Apache + MariaDB + PHP)
+### **LAMP Stack** (Linux + Apache + MySQL + PHP)
 - **Apache** with mod_rewrite and security modules
 - **PHP 8.2** with full extension suite
-- **MariaDB** database server
+- **MySQL** database server
 - **Complete development** environment
 
 ## 🚀 **Quick Start**
@@ -71,6 +71,7 @@ sudo server-manager install-lamp    # Install LAMP stack
 sudo server-manager switch-nginx    # Switch to Nginx
 sudo server-manager switch-apache   # Switch to Apache
 sudo server-manager status          # Show system status
+sudo server-manager secure-mysql    # Secure MySQL installation
 
 # Domain Management
 sudo domain-manager add example.com      # Add domain
@@ -112,7 +113,7 @@ Current Server: Nginx Running
 ### **Domain Manager Menu**
 ```
 ╔══════════════════════════════════════════════════════════════╗
-║                    Domain Manager v1.0                      ║
+║                    Domain Manager v1.2                      ║
 ║                  Interactive Management                     ║
 ╚══════════════════════════════════════════════════════════════╝
 
@@ -165,7 +166,7 @@ Current Server: Nginx Running
 - **Nginx**: Gzip compression, security headers, rate limiting
 - **Apache**: ModSecurity, compression, caching headers
 - **PHP**: OPcache, security settings, performance tuning
-- **MariaDB**: Secure installation and optimization
+- **MySQL**: Secure installation and optimization
 
 ### **SSL Management**
 - **Automatic certificate** generation with Let's Encrypt
@@ -234,7 +235,7 @@ Current Server: Nginx Running
 ### **Components Installed**
 - **Web Servers**: Nginx 1.22+ or Apache 2.4+
 - **PHP**: 8.2 with extensions (mysql, gd, curl, zip, xml, mbstring, bcmath, intl, soap, opcache, xdebug)
-- **Database**: MariaDB 10.6+ (MySQL compatible)
+- **Database**: MySQL 8.0+ (industry standard, reliable, and performant)
 - **Package Managers**: Composer (PHP), npm (Node.js)
 - **Runtime**: Node.js LTS with Yarn and PM2
 - **Security**: UFW firewall, Fail2ban, SSL certificates
@@ -249,6 +250,22 @@ Current Server: Nginx Running
 /var/backups/server-manager/   # Configuration backups
 /var/log/server-manager.log    # Management logs
 ```
+
+## 🗄️ **Database Configuration**
+
+This tool uses **MySQL** as the database server:
+- Installs `mysql-server` and `mysql-client` packages
+- Uses `mysql` systemd service
+- Compatible with standard MySQL configuration and tools
+- Includes automated security hardening via `mysql_secure_installation`
+- Supports both LEMP and LAMP stacks seamlessly
+
+### **Why MySQL?**
+- **Industry Standard**: Most widely adopted database system
+- **Reliability**: Proven stability in production environments
+- **Performance**: Optimized for web applications
+- **Community**: Extensive documentation and support
+- **Compatibility**: Works with all major frameworks and CMS platforms
 
 ## 🤝 **Contributing**
 

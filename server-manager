@@ -242,60 +242,57 @@ install_nodejs() {
     fi
 }
 
-# Install MySQL/MariaDB
+# Install MySQL
 install_mysql() {
-    # Check if MariaDB or MySQL is already installed
-    if systemctl is-active mariadb >/dev/null 2>&1; then
-        print_info "MariaDB is already installed and running"
-        return 0
-    elif systemctl is-active mysql >/dev/null 2>&1; then
+    # Check if MySQL is already installed
+    if systemctl is-active mysql >/dev/null 2>&1; then
         print_info "MySQL is already installed and running"
         return 0
     elif command -v mysql >/dev/null 2>&1; then
-        print_info "MySQL/MariaDB is installed but not running"
+        print_info "MySQL is installed but not running"
         print_step "Starting database service..."
-        systemctl start mariadb 2>/dev/null || systemctl start mysql 2>/dev/null || true
+        systemctl start mysql 2>/dev/null || true
         return 0
     fi
     
-    print_step "Installing MariaDB..."
+    print_step "Installing MySQL..."
     
-    # Install MariaDB packages
-    apt install -y mariadb-server mariadb-client
-    systemctl enable mariadb
-    systemctl start mariadb
+    # Install MySQL packages
+    apt install -y mysql-server mysql-client
+    systemctl enable mysql
+    systemctl start mysql
     
-    # Wait for MariaDB to be ready
+    # Wait for MySQL to be ready
     sleep 3
     
     # Check if this is a fresh installation (no root password set)
     if mysql -u root -e "SELECT 1;" >/dev/null 2>&1; then
-        print_info "MariaDB installed successfully"
+        print_info "MySQL installed successfully"
         print_warning "Please run 'mysql_secure_installation' manually to secure your database"
         print_info "Or use: server-manager secure-mysql"
     else
-        print_success "MariaDB installed (already secured)"
+        print_success "MySQL installed (already secured)"
     fi
     
-    print_success "MariaDB installation completed"
+    print_success "MySQL installation completed"
 }
 
-# Secure MySQL/MariaDB installation
+# Secure MySQL installation
 secure_mysql() {
     if ! command -v mysql >/dev/null 2>&1; then
-        print_error "MySQL/MariaDB is not installed"
+        print_error "MySQL is not installed"
         return 1
     fi
     
-    if ! systemctl is-active mariadb >/dev/null 2>&1 && ! systemctl is-active mysql >/dev/null 2>&1; then
-        print_error "MySQL/MariaDB service is not running"
+    if ! systemctl is-active mysql >/dev/null 2>&1; then
+        print_error "MySQL service is not running"
         return 1
     fi
     
-    print_step "Securing MySQL/MariaDB installation..."
+    print_step "Securing MySQL installation..."
     mysql_secure_installation
     
-    print_success "MySQL/MariaDB secured successfully"
+    print_success "MySQL secured successfully"
 }
 
 # Install Nginx
@@ -879,7 +876,7 @@ install_full_stack() {
     print_info "Installing Node.js..."
     install_nodejs
     
-    print_info "Installing MariaDB..."
+    print_info "Installing MySQL..."
     install_mysql
     
     # Install web server if not already done
@@ -952,10 +949,8 @@ show_system_status() {
         echo "   PHP: Not installed"
     fi
     
-    # MySQL/MariaDB Status
-    if systemctl is-active mariadb >/dev/null 2>&1; then
-        echo "   Database: MariaDB (Running)"
-    elif systemctl is-active mysql >/dev/null 2>&1; then
+    # MySQL Status
+    if systemctl is-active mysql >/dev/null 2>&1; then
         echo "   Database: MySQL (Running)"
     else
         echo "   Database: Not installed/running"
@@ -1293,7 +1288,7 @@ show_component_menu() {
         echo -e "${GREEN}1.${NC} Install PHP 8.2 + Extensions"
         echo -e "${GREEN}2.${NC} Install Nginx"
         echo -e "${GREEN}3.${NC} Install Apache"
-        echo -e "${GREEN}4.${NC} Install MariaDB"
+        echo -e "${GREEN}4.${NC} Install MySQL"
         echo -e "${GREEN}5.${NC} Install Composer"
         echo -e "${GREEN}6.${NC} Install Node.js + npm"
         echo -e "${GREEN}7.${NC} Install All Components"
@@ -1330,7 +1325,7 @@ show_component_menu() {
                 ;;
             4)
                 clear
-                echo -e "${BLUE}=== Installing MariaDB ===${NC}"
+                echo -e "${BLUE}=== Installing MySQL ===${NC}"
                 install_mysql
                 echo ""
                 echo -n -e "${YELLOW}Press Enter to continue...${NC}"
@@ -1443,7 +1438,7 @@ show_usage() {
     echo "  switch-apache             Switch to Apache with site migration"
     echo "  status                    Show system status"
     echo "  restart                   Restart current web server"
-    echo "  secure-mysql              Secure MySQL/MariaDB installation"
+    echo "  secure-mysql              Secure MySQL installation"
     echo "  help                      Show this help message"
     echo ""
     echo "Examples:"

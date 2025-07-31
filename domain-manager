@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Domain Manager Script for Ubuntu 22.04 with Nginx
-# Version: 1.0
+# Version: 1.2 - Production Ready
 # Author: Domain Management System
 
 set -euo pipefail
@@ -11,6 +11,7 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
 NC='\033[0m' # No Color
 
 # Configuration
@@ -222,12 +223,47 @@ add_ssl() {
         apt update && apt install -y certbot python3-certbot-nginx
     fi
     
-    # Run certbot
-    if certbot --nginx -d "$domain" -d "www.$domain" --non-interactive --agree-tos --email favourland14@gmail.com --redirect; then
-        print_success "SSL certificate added successfully for $domain"
+    # Check if www subdomain exists
+    local www_exists="false"
+    if command -v dig >/dev/null 2>&1; then
+        local www_ip
+        www_ip=$(dig +short "www.$domain" 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | tail -n1)
+        if [[ -n "$www_ip" ]]; then
+            www_exists="true"
+            print_info "Found www subdomain ($www_ip), requesting certificate for both $domain and www.$domain"
+        else
+            print_info "No www subdomain found, requesting certificate for $domain only"
+        fi
     else
-        print_error "Failed to add SSL certificate for $domain"
-        return 1
+        print_warning "dig command not available, requesting certificate for both domains"
+        www_exists="true"
+    fi
+    
+    # Run certbot
+    if [[ "$www_exists" == "true" ]]; then
+        if certbot --nginx -d "$domain" -d "www.$domain" --non-interactive --agree-tos --email favourland14@gmail.com --redirect --expand; then
+            print_success "SSL certificate added successfully for $domain and www.$domain"
+        else
+            print_error "Failed to add SSL certificate for $domain"
+            return 1
+        fi
+    else
+        # Check if certificate already exists and only request if it doesn't match our needs
+        local cert_domains=""
+        if [[ -f "/etc/letsencrypt/renewal/$domain.conf" ]]; then
+            cert_domains=$(grep "^domains = " "/etc/letsencrypt/renewal/$domain.conf" 2>/dev/null | cut -d'=' -f2 | tr -d ' ')
+            if [[ "$cert_domains" == "$domain" ]]; then
+                print_success "SSL certificate already exists for $domain"
+                return 0
+            fi
+        fi
+        
+        if certbot --nginx -d "$domain" --non-interactive --agree-tos --email favourland14@gmail.com --redirect --expand; then
+            print_success "SSL certificate added successfully for $domain"
+        else
+            print_error "Failed to add SSL certificate for $domain"
+            return 1
+        fi
     fi
 }
 
@@ -258,8 +294,15 @@ renew_ssl() {
 }
 
 # Add domain
+# Add domain
 add_domain() {
     local domain=$1
+    
+    # Validate input
+    if [[ -z "$domain" ]]; then
+        print_error "Domain name is required"
+        return 1
+    fi
     
     if ! validate_domain "$domain"; then
         return 1
@@ -271,30 +314,91 @@ add_domain() {
         return 1
     fi
     
+    # Check if nginx directories exist
+    if [[ ! -d "$NGINX_SITES_AVAILABLE" ]] || [[ ! -d "$NGINX_SITES_ENABLED" ]]; then
+        print_error "Nginx directories not found. Is nginx installed?"
+        return 1
+    fi
+    
     print_info "Adding domain: $domain"
     
     # Create nginx config
-    create_nginx_config "$domain"
+    if ! create_nginx_config "$domain"; then
+        print_error "Failed to create nginx configuration for $domain"
+        return 1
+    fi
     
     # Create web directory
-    create_web_directory "$domain"
+    if ! create_web_directory "$domain"; then
+        print_error "Failed to create web directory for $domain"
+        # Cleanup nginx config
+        rm -f "$NGINX_SITES_AVAILABLE/$domain"
+        return 1
+    fi
     
     # Enable site
-    ln -sf "$NGINX_SITES_AVAILABLE/$domain" "$NGINX_SITES_ENABLED/$domain"
+    if ! ln -sf "$NGINX_SITES_AVAILABLE/$domain" "$NGINX_SITES_ENABLED/$domain"; then
+        print_error "Failed to enable site $domain"
+        # Cleanup
+        rm -f "$NGINX_SITES_AVAILABLE/$domain"
+        rm -rf "$WEB_ROOT/$domain"
+        return 1
+    fi
     
     # Test and reload nginx
     if reload_nginx; then
         print_success "Domain $domain added successfully"
+        print_info "Document root: $WEB_ROOT/$domain"
         print_info "You can now access your site at http://$domain"
         print_info "To add SSL, run: domain-manager ssl-add $domain"
+        
+        # Optional: Check if domain resolves to this server
+        if command -v dig >/dev/null 2>&1; then
+            local server_ip
+            server_ip=$(curl -s ifconfig.me 2>/dev/null || curl -s ipinfo.io/ip 2>/dev/null)
+            if [[ -n "$server_ip" ]]; then
+                local domain_ip
+                domain_ip=$(dig +short "$domain" 2>/dev/null | tail -n1)
+                if [[ -n "$domain_ip" && "$domain_ip" != "$server_ip" ]]; then
+                    print_warning "Domain $domain does not resolve to this server ($server_ip)"
+                    print_warning "Current DNS points to: $domain_ip"
+                fi
+            fi
+        fi
     else
         # Cleanup on failure
+        print_error "Failed to reload nginx configuration"
         rm -f "$NGINX_SITES_ENABLED/$domain"
         rm -f "$NGINX_SITES_AVAILABLE/$domain"
         rm -rf "$WEB_ROOT/$domain"
         print_error "Failed to add domain $domain"
         return 1
     fi
+}
+
+# Helper function to check if domain resolves to server
+check_domain_dns() {
+    local domain=$1
+    local server_ip=$2
+    
+    if command -v dig >/dev/null 2>&1; then
+        local domain_ip
+        domain_ip=$(dig +short "$domain" 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | tail -n1)
+        
+        if [[ -n "$domain_ip" ]]; then
+            if [[ "$domain_ip" == "$server_ip" ]]; then
+                print_success "DNS correctly points to this server"
+                return 0
+            else
+                print_warning "DNS points to $domain_ip instead of $server_ip"
+                return 1
+            fi
+        else
+            print_warning "Could not resolve DNS for $domain"
+            return 1
+        fi
+    fi
+    return 0
 }
 
 # Remove domain
@@ -544,7 +648,7 @@ show_server_info() {
     echo ""
     
     # Show active domains
-    local domain_count=$(find $NGINX_SITES_ENABLED -type l | wc -l)
+    local domain_count=$(find $NGINX_SITES_ENABLED -type l 2>/dev/null | wc -l)
     echo "Active Domains: $domain_count"
     
     if [[ $domain_count -gt 0 ]]; then
@@ -632,7 +736,7 @@ show_interactive_menu() {
     IFS='|' read -r webserver nginx_status domain_count ssl_count public_ip <<< "$status_info"
     
     echo -e "${BLUE}╔══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║                    Domain Manager v1.0                      ║${NC}"
+    echo -e "${BLUE}║                    Domain Manager v1.2                      ║${NC}"
     echo -e "${BLUE}║                  Interactive Management                     ║${NC}"
     echo -e "${BLUE}╚══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
@@ -664,215 +768,409 @@ show_interactive_menu() {
     echo -n -e "${YELLOW}Enter your choice [0-11]: ${NC}"
 }
 
-# Get domain input with validation
-get_domain_input() {
-    local prompt="$1"
-    local domain
-    
-    while true; do
-        echo -n -e "${YELLOW}$prompt: ${NC}"
-        read -r domain
-        
-        if [[ -z "$domain" ]]; then
-            print_error "Domain cannot be empty"
-            continue
-        fi
-        
-        if validate_domain "$domain"; then
-            echo "$domain"
-            return 0
-        else
-            print_error "Please enter a valid domain name"
-        fi
-    done
-}
 
-# Select domain from existing domains
-select_domain() {
-    local purpose="$1"
-    local domains=()
-    local count=0
-    
-    echo "Available domains for $purpose:" >&2
-    echo "" >&2
-    
-    # Build array of domains
-    for config in $NGINX_SITES_AVAILABLE/*; do
-        if [[ -f "$config" && "$(basename "$config")" != "default" ]]; then
-            local domain=$(basename "$config")
-            domains[$count]=$domain
-            local status="Disabled"
-            
-            if [[ -L "$NGINX_SITES_ENABLED/$domain" ]]; then
-                status="Enabled"
-            fi
-            
-            echo "$((count + 1)). $domain ($status)" >&2
-            ((count++))
-        fi
-    done
-    
-    if [[ $count -eq 0 ]]; then
-        echo "ERROR: No domains found" >&2
-        return 1
-    fi
-    
-    echo "0. Cancel" >&2
-    echo "" >&2
-    
-    while true; do
-        echo -n "Select domain [0-$count]: " >&2
-        read -r choice < /dev/tty
-        
-        if [[ "$choice" == "0" ]]; then
-            return 1
-        elif [[ "$choice" =~ ^[1-9][0-9]*$ ]] && [[ $choice -le $count ]]; then
-            echo "${domains[$((choice - 1))]}"
-            return 0
-        else
-            echo "ERROR: Invalid choice. Please enter a number between 0 and $count" >&2
-        fi
-    done
-}
-
-# Interactive mode main loop
+# Fixed interactive mode main loop
 run_interactive() {
     while true; do
         show_interactive_menu
-        read -r choice < /dev/tty
         
-        case $choice in
-            1)
-                clear
-                echo -e "${BLUE}=== Add Domain ===${NC}"
-                domain=$(get_domain_input "Enter domain name")
-                if [[ $? -eq 0 ]]; then
-                    add_domain "$domain"
+        # Clear any pending input before reading
+        while read -r -t 0; do read -r; done
+        
+        if read -r choice; then
+            choice=$(echo "$choice" | xargs)  # Remove whitespace
+            
+            case $choice in
+                1)
+                    clear
+                    echo -e "${BLUE}=== Add Domain ===${NC}"
                     echo ""
-                    echo -n -e "${YELLOW}Press Enter to continue...${NC}"
-                    read -r
-                fi
-                ;;
-            2)
-                clear
-                echo -e "${BLUE}=== Remove Domain ===${NC}"
-                echo ""
-                domain=$(select_domain "removal")
-                if [[ $? -eq 0 ]]; then
-                    echo ""
-                    echo -n -e "${YELLOW}Remove website files too? [y/N]: ${NC}"
-                    read -r remove_files < /dev/tty
-                    local files_flag="false"
-                    if [[ $remove_files =~ ^[yY] ]]; then
-                        files_flag="true"
+                    echo -n -e "${YELLOW}Enter domain name (e.g., example.com): ${NC}"
+                    read -r domain
+                    domain=$(echo "$domain" | xargs)
+                    
+                    if [[ -n "$domain" ]] && validate_domain "$domain"; then
+                        echo ""
+                        add_domain "$domain"
+                        echo ""
+                        echo -n -e "${YELLOW}Press Enter to continue...${NC}"
+                        read -r
+                    elif [[ -z "$domain" ]]; then
+                        print_error "Domain cannot be empty"
+                        echo ""
+                        echo -n -e "${YELLOW}Press Enter to continue...${NC}"
+                        read -r
+                    else
+                        print_error "Invalid domain name format"
+                        echo ""
+                        echo -n -e "${YELLOW}Press Enter to continue...${NC}"
+                        read -r
                     fi
-                    remove_domain "$domain" "$files_flag"
+                    ;;
+                2)
+                    clear
+                    echo -e "${BLUE}=== Remove Domain ===${NC}"
+                    echo ""
+                    
+                    # Show available domains
+                    domains=()
+                    count=0
+                    echo "Available domains for removal:"
+                    echo ""
+                    
+                    for config in $NGINX_SITES_AVAILABLE/*; do
+                        if [[ -f "$config" && "$(basename "$config")" != "default" ]]; then
+                            domain_name=$(basename "$config")
+                            domains[$count]=$domain_name
+                            status="Disabled"
+                            
+                            if [[ -L "$NGINX_SITES_ENABLED/$domain_name" ]]; then
+                                status="Enabled"
+                            fi
+                            
+                            echo "$((count + 1)). $domain_name ($status)"
+                            ((count++))
+                        fi
+                    done
+                    
+                    if [[ $count -eq 0 ]]; then
+                        print_error "No domains found"
+                        echo ""
+                        echo -n -e "${YELLOW}Press Enter to continue...${NC}"
+                        read -r
+                    else
+                        echo "0. Cancel"
+                        echo ""
+                        echo -n -e "${YELLOW}Select domain [0-$count]: ${NC}"
+                        read -r choice
+                        choice=$(echo "$choice" | xargs)
+                        
+                        if [[ "$choice" == "0" ]]; then
+                            print_info "Operation cancelled"
+                        elif [[ "$choice" =~ ^[1-9][0-9]*$ ]] && [[ $choice -le $count ]]; then
+                            domain="${domains[$((choice - 1))]}"
+                            echo ""
+                            echo -n -e "${YELLOW}Remove website files too? [y/N]: ${NC}"
+                            read -r remove_files
+                            local files_flag="false"
+                            if [[ $remove_files =~ ^[yY] ]]; then
+                                files_flag="true"
+                            fi
+                            remove_domain "$domain" "$files_flag"
+                        else
+                            print_error "Invalid choice"
+                        fi
+                        echo ""
+                        echo -n -e "${YELLOW}Press Enter to continue...${NC}"
+                        read -r
+                    fi
+                    ;;
+                3)
+                    clear
+                    list_domains
                     echo ""
                     echo -n -e "${YELLOW}Press Enter to continue...${NC}"
                     read -r
-                fi
-                ;;
-            3)
-                clear
-                list_domains
-                echo ""
-                echo -n -e "${YELLOW}Press Enter to continue...${NC}"
-                read -r
-                ;;
-            4)
-                clear
-                echo -e "${BLUE}=== Domain Status ===${NC}"
-                domain=$(select_domain "status check")
-                if [[ $? -eq 0 ]]; then
+                    ;;
+                4)
+                    clear
+                    echo -e "${BLUE}=== Domain Status ===${NC}"
                     echo ""
-                    check_domain_status "$domain"
+                    
+                    # Show available domains
+                    domains=()
+                    count=0
+                    echo "Available domains for status check:"
+                    echo ""
+                    
+                    for config in $NGINX_SITES_AVAILABLE/*; do
+                        if [[ -f "$config" && "$(basename "$config")" != "default" ]]; then
+                            domain_name=$(basename "$config")
+                            domains[$count]=$domain_name
+                            status="Disabled"
+                            
+                            if [[ -L "$NGINX_SITES_ENABLED/$domain_name" ]]; then
+                                status="Enabled"
+                            fi
+                            
+                            echo "$((count + 1)). $domain_name ($status)"
+                            ((count++))
+                        fi
+                    done
+                    
+                    if [[ $count -eq 0 ]]; then
+                        print_error "No domains found"
+                        echo ""
+                        echo -n -e "${YELLOW}Press Enter to continue...${NC}"
+                        read -r
+                    else
+                        echo "0. Cancel"
+                        echo ""
+                        echo -n -e "${YELLOW}Select domain [0-$count]: ${NC}"
+                        read -r choice
+                        choice=$(echo "$choice" | xargs)
+                        
+                        if [[ "$choice" == "0" ]]; then
+                            print_info "Operation cancelled"
+                        elif [[ "$choice" =~ ^[1-9][0-9]*$ ]] && [[ $choice -le $count ]]; then
+                            domain="${domains[$((choice - 1))]}"
+                            echo ""
+                            check_domain_status "$domain"
+                        else
+                            print_error "Invalid choice"
+                        fi
+                        echo ""
+                        echo -n -e "${YELLOW}Press Enter to continue...${NC}"
+                        read -r
+                    fi
+                    ;;
+                5)
+                    clear
+                    echo -e "${BLUE}=== Enable Domain ===${NC}"
+                    echo ""
+                    
+                    # Show available domains
+                    domains=()
+                    count=0
+                    echo "Available domains for enabling:"
+                    echo ""
+                    
+                    for config in $NGINX_SITES_AVAILABLE/*; do
+                        if [[ -f "$config" && "$(basename "$config")" != "default" ]]; then
+                            domain_name=$(basename "$config")
+                            domains[$count]=$domain_name
+                            status="Disabled"
+                            
+                            if [[ -L "$NGINX_SITES_ENABLED/$domain_name" ]]; then
+                                status="Enabled"
+                            fi
+                            
+                            echo "$((count + 1)). $domain_name ($status)"
+                            ((count++))
+                        fi
+                    done
+                    
+                    if [[ $count -eq 0 ]]; then
+                        print_error "No domains found"
+                        echo ""
+                        echo -n -e "${YELLOW}Press Enter to continue...${NC}"
+                        read -r
+                    else
+                        echo "0. Cancel"
+                        echo ""
+                        echo -n -e "${YELLOW}Select domain [0-$count]: ${NC}"
+                        read -r choice
+                        choice=$(echo "$choice" | xargs)
+                        
+                        if [[ "$choice" == "0" ]]; then
+                            print_info "Operation cancelled"
+                        elif [[ "$choice" =~ ^[1-9][0-9]*$ ]] && [[ $choice -le $count ]]; then
+                            domain="${domains[$((choice - 1))]}"
+                            echo ""
+                            enable_domain "$domain"
+                        else
+                            print_error "Invalid choice"
+                        fi
+                        echo ""
+                        echo -n -e "${YELLOW}Press Enter to continue...${NC}"
+                        read -r
+                    fi
+                    ;;
+                6)
+                    clear
+                    echo -e "${BLUE}=== Disable Domain ===${NC}"
+                    echo ""
+                    
+                    # Show available domains
+                    domains=()
+                    count=0
+                    echo "Available domains for disabling:"
+                    echo ""
+                    
+                    for config in $NGINX_SITES_AVAILABLE/*; do
+                        if [[ -f "$config" && "$(basename "$config")" != "default" ]]; then
+                            domain_name=$(basename "$config")
+                            domains[$count]=$domain_name
+                            status="Disabled"
+                            
+                            if [[ -L "$NGINX_SITES_ENABLED/$domain_name" ]]; then
+                                status="Enabled"
+                            fi
+                            
+                            echo "$((count + 1)). $domain_name ($status)"
+                            ((count++))
+                        fi
+                    done
+                    
+                    if [[ $count -eq 0 ]]; then
+                        print_error "No domains found"
+                        echo ""
+                        echo -n -e "${YELLOW}Press Enter to continue...${NC}"
+                        read -r
+                    else
+                        echo "0. Cancel"
+                        echo ""
+                        echo -n -e "${YELLOW}Select domain [0-$count]: ${NC}"
+                        read -r choice
+                        choice=$(echo "$choice" | xargs)
+                        
+                        if [[ "$choice" == "0" ]]; then
+                            print_info "Operation cancelled"
+                        elif [[ "$choice" =~ ^[1-9][0-9]*$ ]] && [[ $choice -le $count ]]; then
+                            domain="${domains[$((choice - 1))]}"
+                            echo ""
+                            disable_domain "$domain"
+                        else
+                            print_error "Invalid choice"
+                        fi
+                        echo ""
+                        echo -n -e "${YELLOW}Press Enter to continue...${NC}"
+                        read -r
+                    fi
+                    ;;
+                7)
+                    clear
+                    echo -e "${BLUE}=== Add SSL Certificate ===${NC}"
+                    echo ""
+                    
+                    # Show available domains
+                    domains=()
+                    count=0
+                    echo "Available domains:"
+                    echo ""
+                    
+                    for config in $NGINX_SITES_AVAILABLE/*; do
+                        if [[ -f "$config" && "$(basename "$config")" != "default" ]]; then
+                            domain_name=$(basename "$config")
+                            domains[$count]=$domain_name
+                            status="Disabled"
+                            
+                            if [[ -L "$NGINX_SITES_ENABLED/$domain_name" ]]; then
+                                status="Enabled"
+                            fi
+                            
+                            echo "$((count + 1)). $domain_name ($status)"
+                            ((count++))
+                        fi
+                    done
+                    
+                    if [[ $count -eq 0 ]]; then
+                        print_error "No domains found. Add a domain first."
+                        echo ""
+                        echo -n -e "${YELLOW}Press Enter to continue...${NC}"
+                        read -r
+                    else
+                        echo "0. Cancel"
+                        echo ""
+                        echo -n -e "${YELLOW}Select domain [0-$count]: ${NC}"
+                        read -r choice
+                        choice=$(echo "$choice" | xargs)
+                        
+                        if [[ "$choice" == "0" ]]; then
+                            print_info "Operation cancelled"
+                        elif [[ "$choice" =~ ^[1-9][0-9]*$ ]] && [[ $choice -le $count ]]; then
+                            domain="${domains[$((choice - 1))]}"
+                            echo ""
+                            add_ssl "$domain"
+                        else
+                            print_error "Invalid choice"
+                        fi
+                        echo ""
+                        echo -n -e "${YELLOW}Press Enter to continue...${NC}"
+                        read -r
+                    fi
+                    ;;
+                8)
+                    clear
+                    echo -e "${BLUE}=== Remove SSL Certificate ===${NC}"
+                    echo ""
+                    
+                    # Show available domains
+                    domains=()
+                    count=0
+                    echo "Available domains for SSL removal:"
+                    echo ""
+                    
+                    for config in $NGINX_SITES_AVAILABLE/*; do
+                        if [[ -f "$config" && "$(basename "$config")" != "default" ]]; then
+                            domain_name=$(basename "$config")
+                            domains[$count]=$domain_name
+                            status="Disabled"
+                            
+                            if [[ -L "$NGINX_SITES_ENABLED/$domain_name" ]]; then
+                                status="Enabled"
+                            fi
+                            
+                            echo "$((count + 1)). $domain_name ($status)"
+                            ((count++))
+                        fi
+                    done
+                    
+                    if [[ $count -eq 0 ]]; then
+                        print_error "No domains found"
+                        echo ""
+                        echo -n -e "${YELLOW}Press Enter to continue...${NC}"
+                        read -r
+                    else
+                        echo "0. Cancel"
+                        echo ""
+                        echo -n -e "${YELLOW}Select domain [0-$count]: ${NC}"
+                        read -r choice
+                        choice=$(echo "$choice" | xargs)
+                        
+                        if [[ "$choice" == "0" ]]; then
+                            print_info "Operation cancelled"
+                        elif [[ "$choice" =~ ^[1-9][0-9]*$ ]] && [[ $choice -le $count ]]; then
+                            domain="${domains[$((choice - 1))]}"
+                            echo ""
+                            remove_ssl "$domain"
+                        else
+                            print_error "Invalid choice"
+                        fi
+                        echo ""
+                        echo -n -e "${YELLOW}Press Enter to continue...${NC}"
+                        read -r
+                    fi
+                    ;;
+                9)
+                    clear
+                    echo -e "${BLUE}=== Renew SSL Certificates ===${NC}"
+                    renew_ssl
                     echo ""
                     echo -n -e "${YELLOW}Press Enter to continue...${NC}"
                     read -r
-                fi
-                ;;
-            5)
-                clear
-                echo -e "${BLUE}=== Enable Domain ===${NC}"
-                domain=$(select_domain "enabling")
-                if [[ $? -eq 0 ]]; then
-                    enable_domain "$domain"
+                    ;;
+                10)
+                    clear
+                    show_server_info
                     echo ""
                     echo -n -e "${YELLOW}Press Enter to continue...${NC}"
                     read -r
-                fi
-                ;;
-            6)
-                clear
-                echo -e "${BLUE}=== Disable Domain ===${NC}"
-                domain=$(select_domain "disabling")
-                if [[ $? -eq 0 ]]; then
-                    disable_domain "$domain"
+                    ;;
+                11)
+                    clear
+                    echo -e "${BLUE}=== Launching Server Manager ===${NC}"
                     echo ""
-                    echo -n -e "${YELLOW}Press Enter to continue...${NC}"
-                    read -r
-                fi
-                ;;
-            7)
-                clear
-                echo -e "${BLUE}=== Add SSL Certificate ===${NC}"
-                domain=$(select_domain "SSL addition")
-                if [[ $? -eq 0 ]]; then
-                    add_ssl "$domain"
-                    echo ""
-                    echo -n -e "${YELLOW}Press Enter to continue...${NC}"
-                    read -r
-                fi
-                ;;
-            8)
-                clear
-                echo -e "${BLUE}=== Remove SSL Certificate ===${NC}"
-                domain=$(select_domain "SSL removal")
-                if [[ $? -eq 0 ]]; then
-                    remove_ssl "$domain"
-                    echo ""
-                    echo -n -e "${YELLOW}Press Enter to continue...${NC}"
-                    read -r
-                fi
-                ;;
-            9)
-                clear
-                echo -e "${BLUE}=== Renew SSL Certificates ===${NC}"
-                renew_ssl
-                echo ""
-                echo -n -e "${YELLOW}Press Enter to continue...${NC}"
-                read -r
-                ;;
-            10)
-                clear
-                show_server_info
-                echo ""
-                echo -n -e "${YELLOW}Press Enter to continue...${NC}"
-                read -r
-                ;;
-            11)
-                clear
-                echo -e "${BLUE}=== Launching Server Manager ===${NC}"
-                echo ""
-                if command -v server-manager >/dev/null 2>&1; then
-                    server-manager
-                else
-                    print_error "Server Manager not found. Please install it first."
-                    echo ""
-                    echo -n -e "${YELLOW}Press Enter to continue...${NC}"
-                    read -r
-                fi
-                ;;
-            0)
-                clear
-                print_success "Thank you for using Domain Manager!"
-                exit 0
-                ;;
-            *)
-                print_error "Invalid choice. Please select 0-11"
-                sleep 2
-                ;;
-        esac
+                    if command -v server-manager >/dev/null 2>&1; then
+                        server-manager
+                    else
+                        print_error "Server Manager not found. Please install it first."
+                        echo ""
+                        echo -n -e "${YELLOW}Press Enter to continue...${NC}"
+                        read -r
+                    fi
+                    ;;
+                0)
+                    clear
+                    print_success "Thank you for using Domain Manager!"
+                    exit 0
+                    ;;
+                *)
+                    print_error "Invalid choice. Please select 0-11"
+                    sleep 2
+                    ;;
+            esac
+        fi
     done
 }
 
