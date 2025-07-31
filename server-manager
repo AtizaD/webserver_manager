@@ -1,0 +1,1501 @@
+#!/bin/bash
+
+# Server Manager Script for Ubuntu 22.04
+# Intelligent web server switching with site migration
+# Version: 1.0
+# Author: Server Management System
+
+set -euo pipefail
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+# Configuration
+NGINX_SITES_AVAILABLE='/etc/nginx/sites-available'
+NGINX_SITES_ENABLED='/etc/nginx/sites-enabled'
+APACHE_SITES_AVAILABLE='/etc/apache2/sites-available'
+APACHE_SITES_ENABLED='/etc/apache2/sites-enabled'
+WEB_ROOT='/var/www'
+LOG_FILE='/var/log/server-manager.log'
+BACKUP_DIR='/var/backups/server-manager'
+
+# Functions for colored output
+print_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+    echo "$(date): [SUCCESS] $1" >> "$LOG_FILE"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1" >&2
+    echo "$(date): [ERROR] $1" >> "$LOG_FILE"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+    echo "$(date): [WARNING] $1" >> "$LOG_FILE"
+}
+
+print_info() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+    echo "$(date): [INFO] $1" >> "$LOG_FILE"
+}
+
+print_step() {
+    echo -e "${PURPLE}[STEP]${NC} $1"
+    echo "$(date): [STEP] $1" >> "$LOG_FILE"
+}
+
+# Check if running as root
+check_root() {
+    if [[ $EUID -ne 0 ]]; then
+        print_error "This script must be run as root"
+        exit 1
+    fi
+}
+
+# Create necessary directories
+setup_directories() {
+    mkdir -p "$BACKUP_DIR"
+    mkdir -p "$(dirname "$LOG_FILE")"
+    touch "$LOG_FILE"
+}
+
+# Detect current web server
+detect_current_server() {
+    local current_server="none"
+    
+    if systemctl is-active nginx >/dev/null 2>&1; then
+        current_server="nginx"
+    elif systemctl is-active apache2 >/dev/null 2>&1; then
+        current_server="apache2"
+    elif command -v nginx >/dev/null 2>&1; then
+        current_server="nginx-inactive"
+    elif command -v apache2 >/dev/null 2>&1; then
+        current_server="apache2-inactive"
+    fi
+    
+    echo "$current_server"
+}
+
+# Get PHP version
+get_php_version() {
+    if command -v php >/dev/null 2>&1; then
+        php -r "echo PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION;"
+    else
+        echo ""
+    fi
+}
+
+# Install system packages
+install_base_packages() {
+    print_step "Updating system packages..."
+    apt update -qq
+    
+    print_step "Installing base packages..."
+    
+    # Check which base packages are missing
+    local base_packages=(
+        "software-properties-common" "apt-transport-https" "ca-certificates"
+        "curl" "wget" "gnupg2" "lsb-release" "unzip" "zip" "git"
+        "htop" "nano" "vim" "ufw" "fail2ban" "logrotate" "cron"
+    )
+    
+    local to_install=()
+    for package in "${base_packages[@]}"; do
+        if ! dpkg-query -W "$package" >/dev/null 2>&1; then
+            to_install+=("$package")
+        fi
+    done
+    
+    if [[ ${#to_install[@]} -gt 0 ]]; then
+        print_info "Installing ${#to_install[@]} missing base packages..."
+        apt install -y "${to_install[@]}"
+    else
+        print_info "All base packages already installed"
+    fi
+    
+    print_success "Base packages ready"
+}
+
+# Install PHP with extensions
+install_php() {
+    local php_version="8.2"  # Latest stable
+    
+    # Check if PHP is already installed
+    if command -v php >/dev/null 2>&1; then
+        local current_version=$(php -r "echo PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION;" 2>/dev/null || echo "unknown")
+        if [[ "$current_version" == "$php_version" ]]; then
+            print_info "PHP $php_version is already installed"
+            # Check if PHP-FPM is running
+            if ! systemctl is-active php$php_version-fpm >/dev/null 2>&1; then
+                print_step "Starting PHP-FPM..."
+                systemctl enable php$php_version-fpm >/dev/null 2>&1
+                systemctl start php$php_version-fpm >/dev/null 2>&1
+            fi
+            print_success "PHP $php_version ready"
+            return 0
+        else
+            print_info "PHP $current_version found, upgrading to $php_version..."
+        fi
+    fi
+    
+    print_step "Adding PHP repository..."
+    if ! grep -q "ondrej/php" /etc/apt/sources.list.d/* 2>/dev/null; then
+        add-apt-repository ppa:ondrej/php -y
+        apt update -qq
+    fi
+    
+    print_step "Installing PHP $php_version with extensions..."
+    
+    # Check which packages are already installed (excluding php8.2-json which doesn't exist)
+    local php_packages=(
+        "php$php_version" "php$php_version-fpm" "php$php_version-cli" "php$php_version-common"
+        "php$php_version-mysql" "php$php_version-pgsql" "php$php_version-sqlite3"
+        "php$php_version-redis" "php$php_version-memcached" "php$php_version-gd"
+        "php$php_version-imagick" "php$php_version-curl" "php$php_version-zip"
+        "php$php_version-xml" "php$php_version-mbstring" "php$php_version-bcmath"
+        "php$php_version-intl" "php$php_version-soap" "php$php_version-xsl"
+        "php$php_version-dev" "php$php_version-opcache" "php$php_version-readline"
+        "php$php_version-xdebug"
+    )
+    
+    local to_install=()
+    for package in "${php_packages[@]}"; do
+        if ! dpkg-query -W "$package" >/dev/null 2>&1; then
+            to_install+=("$package")
+        fi
+    done
+    
+    if [[ ${#to_install[@]} -gt 0 ]]; then
+        print_info "Installing ${#to_install[@]} PHP packages..."
+        apt install -y "${to_install[@]}"
+    else
+        print_info "All PHP packages already installed"
+    fi
+    
+    # Configure PHP-FPM
+    systemctl enable php$php_version-fpm
+    systemctl start php$php_version-fpm
+    
+    print_success "PHP $php_version ready with all extensions"
+}
+
+# Install Composer
+install_composer() {
+    if command -v composer >/dev/null 2>&1; then
+        # Use timeout and suppress warnings for version check
+        local current_version=$(timeout 5 bash -c 'COMPOSER_ALLOW_SUPERUSER=1 composer --version --no-ansi --quiet 2>/dev/null' | head -1 | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' | head -1 2>/dev/null || echo "installed")
+        print_info "Composer $current_version is already installed"
+        return 0
+    fi
+    
+    print_step "Installing Composer..."
+    
+    if timeout 60 curl -sS --connect-timeout 10 --max-time 30 https://getcomposer.org/installer | php >/dev/null 2>&1; then
+        if [[ -f composer.phar ]]; then
+            mv composer.phar /usr/local/bin/composer 2>/dev/null
+            chmod +x /usr/local/bin/composer
+            print_success "Composer installed globally"
+        else
+            print_warning "Composer installation incomplete, but continuing..."
+        fi
+    else
+        print_warning "Composer installation failed, but continuing..."
+    fi
+}
+
+# Install Node.js and npm
+install_nodejs() {
+    if command -v node >/dev/null 2>&1; then
+        local current_version=$(node --version)
+        print_info "Node.js $current_version is already installed"
+        
+        # Check for global packages
+        if ! command -v yarn >/dev/null 2>&1; then
+            print_step "Installing Yarn..."
+            npm install -g yarn
+        fi
+        if ! command -v pm2 >/dev/null 2>&1; then
+            print_step "Installing PM2..."
+            npm install -g pm2
+        fi
+        return 0
+    fi
+    
+    print_step "Installing Node.js..."
+    
+    if timeout 120 curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - >/dev/null 2>&1; then
+        apt install -y nodejs >/dev/null 2>&1
+        
+        # Install global packages with timeout
+        timeout 60 npm install -g yarn pm2 >/dev/null 2>&1 || print_warning "Some npm packages may not have installed"
+        
+        print_success "Node.js and npm installed"
+    else
+        print_warning "Node.js installation failed, but continuing..."
+    fi
+}
+
+# Install MySQL
+install_mysql() {
+    # Check if MySQL is already installed
+    if systemctl is-active mysql >/dev/null 2>&1; then
+        print_info "MySQL is already installed and running"
+        return 0
+    elif command -v mysql >/dev/null 2>&1; then
+        print_info "MySQL is installed but not running"
+        print_step "Starting database service..."
+        systemctl start mysql 2>/dev/null || true
+        return 0
+    fi
+    
+    print_step "Installing MySQL..."
+    
+    # Install MySQL packages
+    apt install -y mysql-server mysql-client
+    systemctl enable mysql
+    systemctl start mysql
+    
+    # Wait for MySQL to be ready
+    sleep 3
+    
+    # Check if this is a fresh installation (no root password set)
+    if mysql -u root -e "SELECT 1;" >/dev/null 2>&1; then
+        print_info "MySQL installed successfully"
+        print_warning "Please run 'mysql_secure_installation' manually to secure your database"
+        print_info "Or use: server-manager secure-mysql"
+    else
+        print_success "MySQL installed (already secured)"
+    fi
+    
+    print_success "MySQL installation completed"
+}
+
+# Secure MySQL installation
+secure_mysql() {
+    if ! command -v mysql >/dev/null 2>&1; then
+        print_error "MySQL is not installed"
+        return 1
+    fi
+    
+    if ! systemctl is-active mysql >/dev/null 2>&1; then
+        print_error "MySQL service is not running"
+        return 1
+    fi
+    
+    print_step "Securing MySQL installation..."
+    mysql_secure_installation
+    
+    print_success "MySQL secured successfully"
+}
+
+# Install Nginx
+install_nginx() {
+    if command -v nginx >/dev/null 2>&1; then
+        print_info "Nginx is already installed"
+        if ! systemctl is-active nginx >/dev/null 2>&1; then
+            print_step "Starting Nginx..."
+            systemctl start nginx
+            systemctl enable nginx
+        fi
+        return 0
+    fi
+    
+    print_step "Installing Nginx..."
+    
+    apt install -y nginx
+    
+    # Create optimized configuration
+    create_nginx_config
+    
+    systemctl enable nginx
+    systemctl start nginx
+    
+    print_success "Nginx installed and configured"
+}
+
+# Create optimized Nginx configuration
+create_nginx_config() {
+    local php_version=$(get_php_version)
+    
+    # Main nginx.conf
+    cat > /etc/nginx/nginx.conf << 'EOL'
+user www-data;
+worker_processes auto;
+pid /run/nginx.pid;
+include /etc/nginx/modules-enabled/*.conf;
+
+events {
+    worker_connections 768;
+    use epoll;
+    multi_accept on;
+}
+
+http {
+    # Basic Settings
+    sendfile on;
+    tcp_nopush on;
+    types_hash_max_size 2048;
+    server_tokens off;
+    
+    # MIME
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    
+    # SSL Settings
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers on;
+    
+    # Logging Settings
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$http_x_forwarded_for"';
+    
+    access_log /var/log/nginx/access.log main;
+    error_log /var/log/nginx/error.log;
+    
+    # Gzip Settings
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_types
+        text/plain
+        text/css
+        text/xml
+        text/javascript
+        application/json
+        application/javascript
+        application/xml+rss
+        application/atom+xml
+        image/svg+xml;
+    
+    # Security Headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer-when-downgrade" always;
+    add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline'" always;
+    
+    # Rate Limiting
+    limit_req_zone $binary_remote_addr zone=one:10m rate=1r/s;
+    
+    # Virtual Host Configs
+    include /etc/nginx/conf.d/*.conf;
+    include /etc/nginx/sites-enabled/*;
+}
+EOL
+
+    # PHP configuration snippet
+    if [[ -n "$php_version" ]]; then
+        cat > /etc/nginx/snippets/php-fpm.conf << EOL
+location ~ \.php$ {
+    include snippets/fastcgi-php.conf;
+    fastcgi_pass unix:/var/run/php/php$php_version-fpm.sock;
+}
+EOL
+    fi
+    
+    print_info "Nginx configuration optimized"
+}
+
+# Install Apache
+install_apache() {
+    if command -v apache2 >/dev/null 2>&1; then
+        print_info "Apache is already installed"
+        if ! systemctl is-active apache2 >/dev/null 2>&1; then
+            print_step "Starting Apache..."
+            systemctl start apache2
+            systemctl enable apache2
+        fi
+        return 0
+    fi
+    
+    print_step "Installing Apache..."
+    
+    apt install -y apache2
+    
+    # Enable necessary modules
+    a2enmod rewrite ssl headers deflate expires
+    
+    # Create optimized configuration
+    create_apache_config
+    
+    systemctl enable apache2
+    systemctl start apache2
+    
+    print_success "Apache installed and configured"
+}
+
+# Create optimized Apache configuration
+create_apache_config() {
+    local php_version=$(get_php_version)
+    
+    # Security configuration
+    cat > /etc/apache2/conf-available/security-headers.conf << 'EOL'
+# Security Headers
+Header always set X-Frame-Options "SAMEORIGIN"
+Header always set X-XSS-Protection "1; mode=block"
+Header always set X-Content-Type-Options "nosniff"
+Header always set Referrer-Policy "no-referrer-when-downgrade"
+Header always set Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline'"
+
+# Hide Apache version
+ServerTokens Prod
+ServerSignature Off
+EOL
+    
+    a2enconf security-headers
+    
+    # Performance configuration
+    cat > /etc/apache2/conf-available/performance.conf << 'EOL'
+# Compression
+LoadModule deflate_module modules/mod_deflate.so
+<Location />
+    SetOutputFilter DEFLATE
+    SetEnvIfNoCase Request_URI \
+        \.(?:gif|jpe?g|png)$ no-gzip dont-vary
+    SetEnvIfNoCase Request_URI \
+        \.(?:exe|t?gz|zip|bz2|sit|rar)$ no-gzip dont-vary
+</Location>
+
+# Expires headers
+LoadModule expires_module modules/mod_expires.so
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType text/css "access plus 1 year"
+    ExpiresByType application/javascript "access plus 1 year"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType image/jpg "access plus 1 year"
+    ExpiresByType image/jpeg "access plus 1 year"
+    ExpiresByType image/gif "access plus 1 year"
+    ExpiresByType image/ico "access plus 1 year"
+    ExpiresByType image/icon "access plus 1 year"
+    ExpiresByType text/plain "access plus 1 month"
+    ExpiresByType application/pdf "access plus 1 month"
+    ExpiresByType text/javascript "access plus 1 year"
+    ExpiresByType text/html "access plus 600 seconds"
+</IfModule>
+EOL
+    
+    a2enconf performance
+    
+    # PHP-FPM configuration if available
+    if [[ -n "$php_version" ]]; then
+        a2enmod proxy_fcgi setenvif
+        a2enconf php$php_version-fpm
+    fi
+    
+    print_info "Apache configuration optimized"
+}
+
+# Get all configured sites
+get_configured_sites() {
+    local sites=()
+    
+    # Check Nginx sites
+    if [[ -d "$NGINX_SITES_AVAILABLE" ]]; then
+        for site in "$NGINX_SITES_AVAILABLE"/*; do
+            if [[ -f "$site" && "$(basename "$site")" != "default" ]]; then
+                sites+=("$(basename "$site")")
+            fi
+        done
+    fi
+    
+    # Check Apache sites
+    if [[ -d "$APACHE_SITES_AVAILABLE" ]]; then
+        for site in "$APACHE_SITES_AVAILABLE"/*; do
+            if [[ -f "$site" && "$(basename "$site")" != "000-default.conf" && "$(basename "$site")" != "default-ssl.conf" ]]; then
+                local site_name=$(basename "$site" .conf)
+                if [[ ! " ${sites[@]} " =~ " ${site_name} " ]]; then
+                    sites+=("$site_name")
+                fi
+            fi
+        done
+    fi
+    
+    printf '%s\n' "${sites[@]}"
+}
+
+# Convert Nginx config to Apache
+nginx_to_apache_config() {
+    local domain=$1
+    local nginx_config="$NGINX_SITES_AVAILABLE/$domain"
+    local apache_config="$APACHE_SITES_AVAILABLE/$domain.conf"
+    local php_version=$(get_php_version)
+    
+    if [[ ! -f "$nginx_config" ]]; then
+        print_error "Nginx config for $domain not found"
+        return 1
+    fi
+    
+    print_step "Converting Nginx config to Apache for $domain..."
+    
+    # Extract document root from nginx config
+    local doc_root=$(grep -E "^\s*root\s+" "$nginx_config" | head -1 | awk '{print $2}' | tr -d ';')
+    doc_root=${doc_root:-"$WEB_ROOT/$domain"}
+    
+    # Create Apache virtual host
+    cat > "$apache_config" << EOL
+<VirtualHost *:80>
+    ServerName $domain
+    ServerAlias www.$domain
+    DocumentRoot $doc_root
+    
+    # Security Headers
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-XSS-Protection "1; mode=block"
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "no-referrer-when-downgrade"
+    Header always set Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline'"
+    
+    # Directory settings
+    <Directory $doc_root>
+        Options -Indexes +FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+    
+    # PHP-FPM configuration
+EOL
+
+    if [[ -n "$php_version" ]]; then
+        cat >> "$apache_config" << EOL
+    <FilesMatch \.php$>
+        SetHandler "proxy:unix:/var/run/php/php$php_version-fpm.sock|fcgi://localhost"
+    </FilesMatch>
+EOL
+    fi
+    
+    cat >> "$apache_config" << EOL
+    
+    # Static file caching
+    <LocationMatch "\.(css|js|png|jpg|jpeg|gif|ico|svg)$">
+        ExpiresActive On
+        ExpiresDefault "access plus 1 year"
+        Header append Cache-Control "public"
+    </LocationMatch>
+    
+    # Deny access to hidden files
+    <FilesMatch "^\.">
+        Require all denied
+    </FilesMatch>
+    
+    # Log files
+    ErrorLog \${APACHE_LOG_DIR}/$domain.error.log
+    CustomLog \${APACHE_LOG_DIR}/$domain.access.log combined
+</VirtualHost>
+EOL
+    
+    print_success "Apache config created for $domain"
+}
+
+# Convert Apache config to Nginx
+apache_to_nginx_config() {
+    local domain=$1
+    local apache_config="$APACHE_SITES_AVAILABLE/$domain.conf"
+    local nginx_config="$NGINX_SITES_AVAILABLE/$domain"
+    local php_version=$(get_php_version)
+    
+    if [[ ! -f "$apache_config" ]]; then
+        print_error "Apache config for $domain not found"
+        return 1
+    fi
+    
+    print_step "Converting Apache config to Nginx for $domain..."
+    
+    # Extract document root from apache config
+    local doc_root=$(grep -E "^\s*DocumentRoot\s+" "$apache_config" | head -1 | awk '{print $2}')
+    doc_root=${doc_root:-"$WEB_ROOT/$domain"}
+    
+    # Create Nginx server block
+    cat > "$nginx_config" << EOL
+server {
+    listen 80;
+    listen [::]:80;
+    server_name $domain www.$domain;
+    root $doc_root;
+    index index.html index.htm index.php;
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer-when-downgrade" always;
+    add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline'" always;
+
+    # Gzip compression
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css text/xml text/javascript application/javascript application/xml+rss application/json;
+
+    location / {
+        try_files \$uri \$uri/ =404;
+    }
+
+    # Deny access to hidden files
+    location ~ /\. {
+        deny all;
+    }
+EOL
+
+    if [[ -n "$php_version" ]]; then
+        cat >> "$nginx_config" << EOL
+
+    # PHP support
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/var/run/php/php$php_version-fpm.sock;
+    }
+EOL
+    fi
+    
+    cat >> "$nginx_config" << EOL
+
+    # Static files caching
+    location ~* \.(jpg|jpeg|png|gif|ico|css|js)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # Log files
+    access_log /var/log/nginx/$domain.access.log;
+    error_log /var/log/nginx/$domain.error.log;
+}
+EOL
+    
+    print_success "Nginx config created for $domain"
+}
+
+# Backup current configuration
+backup_configs() {
+    local timestamp=$(date +%Y%m%d_%H%M%S)
+    local backup_path="$BACKUP_DIR/backup_$timestamp"
+    
+    print_step "Creating configuration backup..."
+    mkdir -p "$backup_path"
+    
+    # Backup Nginx configs
+    if [[ -d "$NGINX_SITES_AVAILABLE" ]]; then
+        cp -r "$NGINX_SITES_AVAILABLE" "$backup_path/nginx_sites_available" 2>/dev/null || true
+        cp -r "$NGINX_SITES_ENABLED" "$backup_path/nginx_sites_enabled" 2>/dev/null || true
+        cp /etc/nginx/nginx.conf "$backup_path/nginx.conf" 2>/dev/null || true
+    fi
+    
+    # Backup Apache configs
+    if [[ -d "$APACHE_SITES_AVAILABLE" ]]; then
+        cp -r "$APACHE_SITES_AVAILABLE" "$backup_path/apache_sites_available" 2>/dev/null || true
+        cp -r "$APACHE_SITES_ENABLED" "$backup_path/apache_sites_enabled" 2>/dev/null || true
+        cp /etc/apache2/apache2.conf "$backup_path/apache2.conf" 2>/dev/null || true
+    fi
+    
+    print_success "Configuration backed up to $backup_path"
+    echo "$backup_path"
+}
+
+# Test configuration
+test_config() {
+    local server=$1
+    
+    if [[ "$server" == "nginx" ]]; then
+        if nginx -t >/dev/null 2>&1; then
+            return 0
+        else
+            print_error "Nginx configuration test failed"
+            nginx -t
+            return 1
+        fi
+    elif [[ "$server" == "apache2" ]]; then
+        if apache2ctl configtest >/dev/null 2>&1; then
+            return 0
+        else
+            print_error "Apache configuration test failed"
+            apache2ctl configtest
+            return 1
+        fi
+    fi
+}
+
+# Switch from Nginx to Apache
+switch_nginx_to_apache() {
+    print_step "Switching from Nginx to Apache..."
+    
+    # Backup configurations
+    local backup_path=$(backup_configs)
+    
+    # Install Apache if not present
+    if ! command -v apache2 >/dev/null 2>&1; then
+        install_apache
+    fi
+    
+    # Get all Nginx sites
+    local sites=($(get_configured_sites))
+    
+    if [[ ${#sites[@]} -gt 0 ]]; then
+        print_info "Migrating ${#sites[@]} sites from Nginx to Apache..."
+        
+        for site in "${sites[@]}"; do
+            nginx_to_apache_config "$site"
+            a2ensite "$site.conf" >/dev/null 2>&1
+        done
+        
+        # Test Apache configuration
+        if test_config "apache2"; then
+            # Stop Nginx and start Apache
+            systemctl stop nginx >/dev/null 2>&1 || true
+            systemctl disable nginx >/dev/null 2>&1 || true
+            
+            systemctl start apache2
+            systemctl enable apache2
+            
+            print_success "Successfully switched to Apache"
+            print_info "Backup available at: $backup_path"
+        else
+            print_error "Apache configuration test failed, rolling back..."
+            # Remove created Apache configs
+            for site in "${sites[@]}"; do
+                rm -f "$APACHE_SITES_AVAILABLE/$site.conf"
+                a2dissite "$site.conf" >/dev/null 2>&1 || true
+            done
+            return 1
+        fi
+    else
+        print_info "No sites to migrate"
+        systemctl stop nginx >/dev/null 2>&1 || true
+        systemctl disable nginx >/dev/null 2>&1 || true
+        systemctl start apache2
+        systemctl enable apache2
+        print_success "Switched to Apache"
+    fi
+}
+
+# Switch from Apache to Nginx
+switch_apache_to_nginx() {
+    print_step "Switching from Apache to Nginx..."
+    
+    # Backup configurations
+    local backup_path=$(backup_configs)
+    
+    # Install Nginx if not present
+    if ! command -v nginx >/dev/null 2>&1; then
+        install_nginx
+    fi
+    
+    # Get all Apache sites
+    local sites=($(get_configured_sites))
+    
+    if [[ ${#sites[@]} -gt 0 ]]; then
+        print_info "Migrating ${#sites[@]} sites from Apache to Nginx..."
+        
+        for site in "${sites[@]}"; do
+            apache_to_nginx_config "$site"
+            ln -sf "$NGINX_SITES_AVAILABLE/$site" "$NGINX_SITES_ENABLED/$site"
+        done
+        
+        # Test Nginx configuration
+        if test_config "nginx"; then
+            # Stop Apache and start Nginx
+            systemctl stop apache2 >/dev/null 2>&1 || true
+            systemctl disable apache2 >/dev/null 2>&1 || true
+            
+            systemctl start nginx
+            systemctl enable nginx
+            
+            print_success "Successfully switched to Nginx"
+            print_info "Backup available at: $backup_path"
+        else
+            print_error "Nginx configuration test failed, rolling back..."
+            # Remove created Nginx configs
+            for site in "${sites[@]}"; do
+                rm -f "$NGINX_SITES_AVAILABLE/$site"
+                rm -f "$NGINX_SITES_ENABLED/$site"
+            done
+            return 1
+        fi
+    else
+        print_info "No sites to migrate"
+        systemctl stop apache2 >/dev/null 2>&1 || true
+        systemctl disable apache2 >/dev/null 2>&1 || true
+        systemctl start nginx
+        systemctl enable nginx
+        print_success "Switched to Nginx"
+    fi
+}
+
+# Install full LEMP/LAMP stack
+install_full_stack() {
+    local server_type=$1
+    local current_server=$(detect_current_server)
+    
+    print_step "Installing full $server_type stack..."
+    
+    # Check for conflicts
+    if [[ "$server_type" == "LEMP" && ("$current_server" == "apache2" || "$current_server" == "apache2-inactive") ]]; then
+        echo ""
+        print_warning "Apache is currently installed. LEMP stack requires Nginx."
+        echo -n -e "${YELLOW}Do you want to switch from Apache to Nginx? [y/N]: ${NC}"
+        read -r switch_choice < /dev/tty
+        if [[ $switch_choice =~ ^[yY] ]]; then
+            print_step "Switching from Apache to Nginx..."
+            switch_apache_to_nginx
+        else
+            print_info "LEMP installation cancelled. Use 'Install LAMP Stack' instead."
+            return 0
+        fi
+    elif [[ "$server_type" == "LAMP" && ("$current_server" == "nginx" || "$current_server" == "nginx-inactive") ]]; then
+        echo ""
+        print_warning "Nginx is currently installed. LAMP stack requires Apache."
+        echo -n -e "${YELLOW}Do you want to switch from Nginx to Apache? [y/N]: ${NC}"
+        read -r switch_choice < /dev/tty
+        if [[ $switch_choice =~ ^[yY] ]]; then
+            print_step "Switching from Nginx to Apache..."
+            switch_nginx_to_apache
+        else
+            print_info "LAMP installation cancelled. Use 'Install LEMP Stack' instead."
+            return 0
+        fi
+    fi
+    
+    # Install components
+    print_info "Installing base packages..."
+    install_base_packages
+    
+    print_info "Installing PHP..."
+    install_php
+    
+    print_info "Installing Composer..."
+    install_composer
+    
+    print_info "Installing Node.js..."
+    install_nodejs
+    
+    print_info "Installing MySQL..."
+    install_mysql
+    
+    # Install web server if not already done
+    if [[ "$server_type" == "LEMP" ]]; then
+        if ! systemctl is-active nginx >/dev/null 2>&1; then
+            install_nginx
+        else
+            print_info "Nginx is already running"
+        fi
+    else
+        if ! systemctl is-active apache2 >/dev/null 2>&1; then
+            install_apache
+        else
+            print_info "Apache is already running"
+        fi
+    fi
+    
+    # Configure firewall
+    print_step "Configuring firewall..."
+    ufw --force enable
+    ufw allow ssh
+    ufw allow 'Nginx Full' 2>/dev/null || ufw allow 'Apache Full' 2>/dev/null || true
+    ufw allow 80/tcp
+    ufw allow 443/tcp
+    
+    print_success "$server_type stack installation completed!"
+}
+
+# Show system status
+show_system_status() {
+    local current_server=$(detect_current_server)
+    local php_version=$(get_php_version)
+    local sites=($(get_configured_sites))
+    
+    echo -e "${BLUE}╔══════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║                    Server Manager v1.0                      ║${NC}"
+    echo -e "${BLUE}║                   System Status Report                      ║${NC}"
+    echo -e "${BLUE}╚══════════════════════════════════════════════════════════════╗${NC}"
+    echo ""
+    
+    echo -e "${CYAN}🖥️  Web Server Status:${NC}"
+    case $current_server in
+        "nginx")
+            echo "   Active Server: Nginx (Running)"
+            ;;
+        "apache2")
+            echo "   Active Server: Apache (Running)"
+            ;;
+        "nginx-inactive")
+            echo "   Installed: Nginx (Stopped)"
+            ;;
+        "apache2-inactive")
+            echo "   Installed: Apache (Stopped)"
+            ;;
+        "none")
+            echo "   Status: No web server installed"
+            ;;
+    esac
+    
+    echo ""
+    echo -e "${CYAN}🔧 Stack Components:${NC}"
+    
+    # PHP Status
+    if [[ -n "$php_version" ]]; then
+        echo "   PHP: $php_version (Installed)"
+        if systemctl is-active php$php_version-fpm >/dev/null 2>&1; then
+            echo "   PHP-FPM: Running"
+        fi
+    else
+        echo "   PHP: Not installed"
+    fi
+    
+    # MySQL Status
+    if systemctl is-active mysql >/dev/null 2>&1; then
+        echo "   Database: MySQL (Running)"
+    else
+        echo "   Database: Not installed/running"
+    fi
+    
+    # Composer
+    if command -v composer >/dev/null 2>&1; then
+        echo "   Composer: $(composer --version --no-ansi | head -1)"
+    else
+        echo "   Composer: Not installed"
+    fi
+    
+    # Node.js
+    if command -v node >/dev/null 2>&1; then
+        echo "   Node.js: $(node --version)"
+    else
+        echo "   Node.js: Not installed"
+    fi
+    
+    echo ""
+    echo -e "${CYAN}🌐 Configured Sites:${NC}"
+    if [[ ${#sites[@]} -gt 0 ]]; then
+        for site in "${sites[@]}"; do
+            echo "   • $site"
+        done
+    else
+        echo "   No sites configured"
+    fi
+    
+    echo ""
+    echo -e "${CYAN}💾 System Resources:${NC}"
+    echo "   Memory: $(free -h | awk '/^Mem:/ {print $3"/"$2}')"
+    echo "   Disk: $(df -h / | awk 'NR==2 {print $3"/"$2" ("$5" used)"}')"
+    echo "   Uptime: $(uptime -p 2>/dev/null || echo 'Unknown')"
+}
+
+# Interactive menu
+show_interactive_menu() {
+    clear
+    local current_server=$(detect_current_server)
+    
+    echo -e "${BLUE}╔══════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║                    Server Manager v1.0                      ║${NC}"
+    echo -e "${BLUE}║                 Web Server Management                       ║${NC}"
+    echo -e "${BLUE}╚══════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    echo -e "${CYAN}Current Server: ${NC}$(echo $current_server | tr '-' ' ' | sed 's/\b\w/\U&/g')"
+    echo ""
+    
+    echo -e "${BLUE}🚀 Installation Options:${NC}"
+    echo -e "${GREEN}1.${NC} Install LEMP Stack (Linux + Nginx + MySQL + PHP)"
+    echo -e "${GREEN}2.${NC} Install LAMP Stack (Linux + Apache + MySQL + PHP)"
+    echo -e "${GREEN}3.${NC} Install Individual Components"
+    echo ""
+    
+    echo -e "${BLUE}🔄 Server Management:${NC}"
+    
+    # Smart menu based on current server state
+    case $current_server in
+        "nginx")
+            echo -e "${GREEN}4.${NC} Switch to Apache (with site migration)"
+            echo -e "${GREEN}5.${NC} Restart Nginx"
+            ;;
+        "apache2")
+            echo -e "${GREEN}4.${NC} Switch to Nginx (with site migration)"
+            echo -e "${GREEN}5.${NC} Restart Apache"
+            ;;
+        "nginx-inactive")
+            echo -e "${GREEN}4.${NC} Start Nginx"
+            echo -e "${GREEN}5.${NC} Switch to Apache (with site migration)"
+            echo -e "${GREEN}6.${NC} Install and Start Apache"
+            ;;
+        "apache2-inactive")
+            echo -e "${GREEN}4.${NC} Start Apache"
+            echo -e "${GREEN}5.${NC} Switch to Nginx (with site migration)"
+            echo -e "${GREEN}6.${NC} Install and Start Nginx"
+            ;;
+        "none")
+            echo -e "${YELLOW}4.${NC} No web server detected - Install Nginx"
+            echo -e "${YELLOW}5.${NC} No web server detected - Install Apache"
+            ;;
+    esac
+    echo ""
+    
+    echo -e "${BLUE}📊 Information:${NC}"
+    if [[ "$current_server" == "nginx-inactive" || "$current_server" == "apache2-inactive" ]]; then
+        echo -e "${GREEN}7.${NC} Show System Status"
+        echo -e "${GREEN}8.${NC} Show Configuration Backups"
+        echo ""
+        echo -e "${BLUE}🌐 Domain Management:${NC}"
+        echo -e "${PURPLE}9.${NC} Domain Manager (Add/Remove Domains & SSL)"
+        echo ""
+        echo -e "${RED}0.${NC} Exit"
+        echo ""
+        echo -n -e "${YELLOW}Enter your choice [0-9]: ${NC}"
+    elif [[ "$current_server" == "none" ]]; then
+        echo -e "${GREEN}6.${NC} Show System Status"
+        echo -e "${GREEN}7.${NC} Show Configuration Backups"
+        echo ""
+        echo -e "${BLUE}🌐 Domain Management:${NC}"
+        echo -e "${PURPLE}8.${NC} Domain Manager (Add/Remove Domains & SSL)"
+        echo ""
+        echo -e "${RED}0.${NC} Exit"
+        echo ""
+        echo -n -e "${YELLOW}Enter your choice [0-8]: ${NC}"
+    else
+        echo -e "${GREEN}6.${NC} Show System Status"
+        echo -e "${GREEN}7.${NC} Show Configuration Backups"
+        echo ""
+        echo -e "${BLUE}🌐 Domain Management:${NC}"
+        echo -e "${PURPLE}8.${NC} Domain Manager (Add/Remove Domains & SSL)"
+        echo ""
+        echo -e "${RED}0.${NC} Exit"
+        echo ""
+        echo -n -e "${YELLOW}Enter your choice [0-8]: ${NC}"
+    fi
+}
+
+# Handle dynamic menu choices
+handle_server_management_choice() {
+    local choice=$1
+    local current_server=$(detect_current_server)
+    
+    case $current_server in
+        "nginx")
+            case $choice in
+                4) # Switch to Apache
+                    clear
+                    echo -e "${BLUE}=== Switching from Nginx to Apache ===${NC}"
+                    echo ""
+                    switch_nginx_to_apache
+                    ;;
+                5) # Restart Nginx
+                    clear
+                    echo -e "${BLUE}=== Restarting Nginx ===${NC}"
+                    echo ""
+                    restart_current_server
+                    ;;
+            esac
+            ;;
+        "apache2")
+            case $choice in
+                4) # Switch to Nginx
+                    clear
+                    echo -e "${BLUE}=== Switching from Apache to Nginx ===${NC}"
+                    echo ""
+                    switch_apache_to_nginx
+                    ;;
+                5) # Restart Apache
+                    clear
+                    echo -e "${BLUE}=== Restarting Apache ===${NC}"
+                    echo ""
+                    restart_current_server
+                    ;;
+            esac
+            ;;
+        "nginx-inactive")
+            case $choice in
+                4) # Start Nginx
+                    clear
+                    echo -e "${BLUE}=== Starting Nginx ===${NC}"
+                    echo ""
+                    systemctl start nginx
+                    systemctl enable nginx
+                    print_success "Nginx started successfully"
+                    ;;
+                5) # Switch to Apache
+                    clear
+                    echo -e "${BLUE}=== Switching to Apache ===${NC}"
+                    echo ""
+                    switch_nginx_to_apache
+                    ;;
+                6) # Install Apache
+                    clear
+                    echo -e "${BLUE}=== Installing Apache ===${NC}"
+                    echo ""
+                    install_apache
+                    ;;
+            esac
+            ;;
+        "apache2-inactive")
+            case $choice in
+                4) # Start Apache
+                    clear
+                    echo -e "${BLUE}=== Starting Apache ===${NC}"
+                    echo ""
+                    systemctl start apache2
+                    systemctl enable apache2
+                    print_success "Apache started successfully"
+                    ;;
+                5) # Switch to Nginx
+                    clear
+                    echo -e "${BLUE}=== Switching to Nginx ===${NC}"
+                    echo ""
+                    switch_apache_to_nginx
+                    ;;
+                6) # Install Nginx
+                    clear
+                    echo -e "${BLUE}=== Installing Nginx ===${NC}"
+                    echo ""
+                    install_nginx
+                    ;;
+            esac
+            ;;
+        "none")
+            case $choice in
+                4) # Install Nginx
+                    clear
+                    echo -e "${BLUE}=== Installing Nginx ===${NC}"
+                    echo ""
+                    install_nginx
+                    ;;
+                5) # Install Apache
+                    clear
+                    echo -e "${BLUE}=== Installing Apache ===${NC}"
+                    echo ""
+                    install_apache
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+# Run interactive mode
+run_interactive() {
+    while true; do
+        local current_server=$(detect_current_server)
+        show_interactive_menu
+        read -r choice < /dev/tty
+        
+        case $choice in
+            1)
+                clear
+                echo -e "${BLUE}=== Installing LEMP Stack ===${NC}"
+                echo ""
+                install_full_stack "LEMP"
+                echo ""
+                echo -n -e "${YELLOW}Press Enter to continue...${NC}"
+                read -r
+                ;;
+            2)
+                clear
+                echo -e "${BLUE}=== Installing LAMP Stack ===${NC}"
+                echo ""
+                install_full_stack "LAMP"
+                echo ""
+                echo -n -e "${YELLOW}Press Enter to continue...${NC}"
+                read -r
+                ;;
+            3)
+                clear
+                show_component_menu
+                ;;
+            4|5|6)
+                handle_server_management_choice $choice
+                echo ""
+                echo -n -e "${YELLOW}Press Enter to continue...${NC}"
+                read -r
+                ;;
+            7|8|9)
+                # Dynamic mapping for info and domain options
+                local current_server=$(detect_current_server)
+                
+                if [[ "$current_server" == "nginx-inactive" || "$current_server" == "apache2-inactive" ]]; then
+                    # For inactive servers: 7=status, 8=backups, 9=domain-manager
+                    case $choice in
+                        7) clear; show_system_status ;;
+                        8) clear; show_backups ;;
+                        9) clear; launch_domain_manager ;;
+                    esac
+                elif [[ "$current_server" == "none" ]]; then
+                    # For no server: 6=status, 7=backups, 8=domain-manager
+                    case $choice in
+                        6) clear; show_system_status ;;
+                        7) clear; show_backups ;;
+                        8) clear; launch_domain_manager ;;
+                    esac
+                else
+                    # For active servers: 6=status, 7=backups, 8=domain-manager
+                    case $choice in
+                        6) clear; show_system_status ;;
+                        7) clear; show_backups ;;
+                        8) clear; launch_domain_manager ;;
+                    esac
+                fi
+                
+                if [[ $choice -ne 8 && $choice -ne 9 ]]; then
+                    echo ""
+                    echo -n -e "${YELLOW}Press Enter to continue...${NC}"
+                    read -r
+                fi
+                ;;
+            0)
+                clear
+                print_success "Thank you for using Server Manager!"
+                exit 0
+                ;;
+            *)
+                if [[ "$current_server" == "nginx-inactive" || "$current_server" == "apache2-inactive" ]]; then
+                    print_error "Invalid choice. Please select 0-9"
+                else
+                    print_error "Invalid choice. Please select 0-8"
+                fi
+                sleep 2
+                ;;
+        esac
+    done
+}
+
+# Launch Domain Manager
+launch_domain_manager() {
+    echo -e "${BLUE}=== Launching Domain Manager ===${NC}"
+    echo ""
+    if command -v domain-manager >/dev/null 2>&1; then
+        print_info "Switching to Domain Manager..."
+        domain-manager
+    else
+        print_error "Domain Manager not found. Please install it first."
+        echo ""
+        echo -n -e "${YELLOW}Press Enter to continue...${NC}"
+        read -r
+    fi
+}
+
+# Show component installation menu
+show_component_menu() {
+    while true; do
+        clear
+        echo -e "${BLUE}╔══════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${BLUE}║                Individual Component Installation             ║${NC}"
+        echo -e "${BLUE}╚══════════════════════════════════════════════════════════════╝${NC}"
+        echo ""
+        
+        echo -e "${GREEN}1.${NC} Install PHP 8.2 + Extensions"
+        echo -e "${GREEN}2.${NC} Install Nginx"
+        echo -e "${GREEN}3.${NC} Install Apache"
+        echo -e "${GREEN}4.${NC} Install MySQL"
+        echo -e "${GREEN}5.${NC} Install Composer"
+        echo -e "${GREEN}6.${NC} Install Node.js + npm"
+        echo -e "${GREEN}7.${NC} Install All Components"
+        echo -e "${RED}0.${NC} Back to Main Menu"
+        echo ""
+        echo -n -e "${YELLOW}Enter your choice [0-7]: ${NC}"
+        
+        read -r choice < /dev/tty
+        
+        case $choice in
+            1)
+                clear
+                echo -e "${BLUE}=== Installing PHP ===${NC}"
+                install_php
+                echo ""
+                echo -n -e "${YELLOW}Press Enter to continue...${NC}"
+                read -r
+                ;;
+            2)
+                clear
+                echo -e "${BLUE}=== Installing Nginx ===${NC}"
+                install_nginx
+                echo ""
+                echo -n -e "${YELLOW}Press Enter to continue...${NC}"
+                read -r
+                ;;
+            3)
+                clear
+                echo -e "${BLUE}=== Installing Apache ===${NC}"
+                install_apache
+                echo ""
+                echo -n -e "${YELLOW}Press Enter to continue...${NC}"
+                read -r
+                ;;
+            4)
+                clear
+                echo -e "${BLUE}=== Installing MySQL ===${NC}"
+                install_mysql
+                echo ""
+                echo -n -e "${YELLOW}Press Enter to continue...${NC}"
+                read -r
+                ;;
+            5)
+                clear
+                echo -e "${BLUE}=== Installing Composer ===${NC}"
+                install_composer
+                echo ""
+                echo -n -e "${YELLOW}Press Enter to continue...${NC}"
+                read -r
+                ;;
+            6)
+                clear
+                echo -e "${BLUE}=== Installing Node.js ===${NC}"
+                install_nodejs
+                echo ""
+                echo -n -e "${YELLOW}Press Enter to continue...${NC}"
+                read -r
+                ;;
+            7)
+                clear
+                echo -e "${BLUE}=== Installing All Components ===${NC}"
+                install_base_packages
+                install_php
+                install_composer
+                install_nodejs
+                install_mysql
+                echo ""
+                echo -n -e "${YELLOW}Press Enter to continue...${NC}"
+                read -r
+                ;;
+            0)
+                return
+                ;;
+            *)
+                print_error "Invalid choice. Please select 0-7"
+                sleep 2
+                ;;
+        esac
+    done
+}
+
+# Restart current web server
+restart_current_server() {
+    local current_server=$(detect_current_server)
+    
+    case $current_server in
+        "nginx")
+            print_step "Restarting Nginx..."
+            systemctl restart nginx
+            print_success "Nginx restarted successfully"
+            ;;
+        "apache2")
+            print_step "Restarting Apache..."
+            systemctl restart apache2
+            print_success "Apache restarted successfully"
+            ;;
+        *)
+            print_error "No active web server found to restart"
+            return 1
+            ;;
+    esac
+}
+
+# Show configuration backups
+show_backups() {
+    echo -e "${BLUE}╔══════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║                  Configuration Backups                      ║${NC}"
+    echo -e "${BLUE}╚══════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    if [[ -d "$BACKUP_DIR" ]]; then
+        local backups=($(ls -1t "$BACKUP_DIR" 2>/dev/null))
+        
+        if [[ ${#backups[@]} -gt 0 ]]; then
+            echo -e "${CYAN}Available backups:${NC}"
+            echo ""
+            for backup in "${backups[@]}"; do
+                local backup_path="$BACKUP_DIR/$backup"
+                local backup_date=$(date -d "$(stat -c %y "$backup_path")" +"%Y-%m-%d %H:%M:%S" 2>/dev/null || echo "Unknown")
+                local backup_size=$(du -sh "$backup_path" 2>/dev/null | cut -f1)
+                echo "   📁 $backup ($backup_size) - $backup_date"
+            done
+            echo ""
+            echo -e "${YELLOW}Backup location: $BACKUP_DIR${NC}"
+        else
+            echo "No backups found"
+        fi
+    else
+        echo "No backup directory found"
+    fi
+}
+
+# Show usage information
+show_usage() {
+    echo -e "${BLUE}Server Manager - Web Server Management Tool${NC}"
+    echo ""
+    echo "Usage: server-manager [COMMAND] [OPTIONS]"
+    echo ""
+    echo "Interactive Mode:"
+    echo "  server-manager            Launch interactive interface"
+    echo "  server-manager -i         Launch interactive interface"
+    echo ""
+    echo "Commands:"
+    echo "  install-lemp              Install LEMP stack"
+    echo "  install-lamp              Install LAMP stack"
+    echo "  switch-nginx              Switch to Nginx with site migration"
+    echo "  switch-apache             Switch to Apache with site migration"
+    echo "  status                    Show system status"
+    echo "  restart                   Restart current web server"
+    echo "  secure-mysql              Secure MySQL installation"
+    echo "  help                      Show this help message"
+    echo ""
+    echo "Examples:"
+    echo "  server-manager install-lemp"
+    echo "  server-manager switch-nginx"
+    echo "  server-manager status"
+    echo ""
+    echo "For support and documentation, check the log file: $LOG_FILE"
+}
+
+# Main script logic
+main() {
+    # Check if running as root
+    check_root
+    
+    # Setup directories and logging
+    setup_directories
+    
+    case "${1:-}" in
+        "install-lemp")
+            install_full_stack "LEMP"
+            ;;
+        "install-lamp")
+            install_full_stack "LAMP"
+            ;;
+        "switch-nginx")
+            switch_apache_to_nginx
+            ;;
+        "switch-apache")
+            switch_nginx_to_apache
+            ;;
+        "status")
+            show_system_status
+            ;;
+        "restart")
+            restart_current_server
+            ;;
+        "secure-mysql")
+            secure_mysql
+            ;;
+        "help"|"--help")
+            show_usage
+            ;;
+        "-i"|"--interactive")
+            run_interactive
+            ;;
+        "")
+            run_interactive
+            ;;
+        *)
+            print_error "Unknown command: $1"
+            echo ""
+            show_usage
+            exit 1
+            ;;
+    esac
+}
+
+# Run main function with all arguments
+main "$@"
