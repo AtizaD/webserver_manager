@@ -227,7 +227,7 @@ add_ssl() {
     local www_exists="false"
     if command -v dig >/dev/null 2>&1; then
         local www_ip
-        www_ip=$(dig +short "www.$domain" 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | tail -n1)
+        www_ip=$(dig +short "www.$domain" 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | tail -n1 || true)
         if [[ -n "$www_ip" ]]; then
             www_exists="true"
             print_info "Found www subdomain ($www_ip), requesting certificate for both $domain and www.$domain"
@@ -251,7 +251,7 @@ add_ssl() {
         # Check if certificate already exists and only request if it doesn't match our needs
         local cert_domains=""
         if [[ -f "/etc/letsencrypt/renewal/$domain.conf" ]]; then
-            cert_domains=$(grep "^domains = " "/etc/letsencrypt/renewal/$domain.conf" 2>/dev/null | cut -d'=' -f2 | tr -d ' ')
+            cert_domains=$(grep "^domains = " "/etc/letsencrypt/renewal/$domain.conf" 2>/dev/null | cut -d'=' -f2 | tr -d ' ' || true)
             if [[ "$cert_domains" == "$domain" ]]; then
                 print_success "SSL certificate already exists for $domain"
                 return 0
@@ -416,7 +416,11 @@ remove_domain() {
     fi
     
     # Confirmation
-    echo -n -e "${YELLOW}Are you sure you want to remove domain $domain? [y/N]: ${NC}"
+    if [[ ! -t 0 ]] || [[ ! -t 1 ]]; then
+        echo -n "Are you sure you want to remove domain $domain? [y/N]: "
+    else
+        echo -n -e "${YELLOW}Are you sure you want to remove domain $domain? [y/N]: ${NC}"
+    fi
     read -r response
     if [[ ! $response =~ ^[yY] ]]; then
         print_info "Operation cancelled"
@@ -436,7 +440,11 @@ remove_domain() {
     
     # Remove web files if requested
     if [[ $remove_files == "true" ]]; then
-        echo -n -e "${YELLOW}Remove website files ($WEB_ROOT/$domain)? [y/N]: ${NC}"
+        if [[ ! -t 0 ]] || [[ ! -t 1 ]]; then
+            echo -n "Remove website files ($WEB_ROOT/$domain)? [y/N]: "
+        else
+            echo -n -e "${YELLOW}Remove website files ($WEB_ROOT/$domain)? [y/N]: ${NC}"
+        fi
         read -r response
         if [[ $response =~ ^[yY] ]]; then
             rm -rf "$WEB_ROOT/$domain"
@@ -729,20 +737,33 @@ get_system_status() {
 
 # Interactive menu
 show_interactive_menu() {
-    clear
+    # Detect if we're in a proper terminal
+    if [[ ! -t 0 ]] || [[ ! -t 1 ]]; then
+        # Not in a proper terminal, use plain output
+        echo "================================================================"
+        echo "                    Domain Manager v1.2"
+        echo "                  Interactive Management"
+        echo "================================================================"
+    else
+        clear
+        echo -e "${BLUE}╔══════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${BLUE}║                    Domain Manager v1.2                      ║${NC}"
+        echo -e "${BLUE}║                  Interactive Management                     ║${NC}"
+        echo -e "${BLUE}╚══════════════════════════════════════════════════════════════╝${NC}"
+    fi
     
     # Get system status
     local status_info=$(get_system_status)
     IFS='|' read -r webserver nginx_status domain_count ssl_count public_ip <<< "$status_info"
     
-    echo -e "${BLUE}╔══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║                    Domain Manager v1.2                      ║${NC}"
-    echo -e "${BLUE}║                  Interactive Management                     ║${NC}"
-    echo -e "${BLUE}╚══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
     
     # System Status Display
-    echo -e "${BLUE}📊 System Status:${NC}"
+    if [[ ! -t 0 ]] || [[ ! -t 1 ]]; then
+        echo "System Status:"
+    else
+        echo -e "${BLUE}📊 System Status:${NC}"
+    fi
     printf "   %-20s %s\n" "Server:" "$webserver ($nginx_status)"
     printf "   %-20s %s\n" "Available Domains:" "$domain_count"
     printf "   %-20s %s\n" "SSL Certificates:" "$ssl_count"
@@ -751,21 +772,46 @@ show_interactive_menu() {
     echo ""
     
     # Menu Options
-    echo -e "${BLUE}🚀 Management Options:${NC}"
-    echo -e "${GREEN}1.${NC} Add Domain"
-    echo -e "${GREEN}2.${NC} Remove Domain"
-    echo -e "${GREEN}3.${NC} List All Domains"
-    echo -e "${GREEN}4.${NC} Check Domain Status"
-    echo -e "${GREEN}5.${NC} Enable Domain"
-    echo -e "${GREEN}6.${NC} Disable Domain"
-    echo -e "${GREEN}7.${NC} Add SSL Certificate"
-    echo -e "${GREEN}8.${NC} Remove SSL Certificate"
-    echo -e "${GREEN}9.${NC} Renew SSL Certificates"
-    echo -e "${GREEN}10.${NC} Server Information"
-    echo -e "${PURPLE}11.${NC} Server Manager (Switch Apache/Nginx)"
-    echo -e "${RED}0.${NC} Exit"
+    if [[ ! -t 0 ]] || [[ ! -t 1 ]]; then
+        echo "Management Options:"
+    else
+        echo -e "${BLUE}🚀 Management Options:${NC}"
+    fi
+    
+    if [[ ! -t 0 ]] || [[ ! -t 1 ]]; then
+        echo "1. Add Domain"
+        echo "2. Remove Domain"
+        echo "3. List All Domains"
+        echo "4. Check Domain Status"
+        echo "5. Enable Domain"
+        echo "6. Disable Domain"
+        echo "7. Add SSL Certificate"
+        echo "8. Remove SSL Certificate"
+        echo "9. Renew SSL Certificates"
+        echo "10. Server Information"
+        echo "11. Server Manager (Switch Apache/Nginx)"
+        echo "0. Exit"
+    else
+        echo -e "${GREEN}1.${NC} Add Domain"
+        echo -e "${GREEN}2.${NC} Remove Domain"
+        echo -e "${GREEN}3.${NC} List All Domains"
+        echo -e "${GREEN}4.${NC} Check Domain Status"
+        echo -e "${GREEN}5.${NC} Enable Domain"
+        echo -e "${GREEN}6.${NC} Disable Domain"
+        echo -e "${GREEN}7.${NC} Add SSL Certificate"
+        echo -e "${GREEN}8.${NC} Remove SSL Certificate"
+        echo -e "${GREEN}9.${NC} Renew SSL Certificates"
+        echo -e "${GREEN}10.${NC} Server Information"
+        echo -e "${PURPLE}11.${NC} Server Manager (Switch Apache/Nginx)"
+        echo -e "${RED}0.${NC} Exit"
+    fi
     echo ""
-    echo -n -e "${YELLOW}Enter your choice [0-11]: ${NC}"
+    
+    if [[ ! -t 0 ]] || [[ ! -t 1 ]]; then
+        echo -n "Enter your choice [0-11]: "
+    else
+        echo -n -e "${YELLOW}Enter your choice [0-11]: ${NC}"
+    fi
 }
 
 
@@ -774,15 +820,19 @@ run_interactive() {
     while true; do
         show_interactive_menu
         
-        # Clear any pending input before reading
-        while read -r -t 0; do read -r; done
+        # Clear any pending input before reading (only if in terminal)
+        if [[ -t 0 ]] && [[ -t 1 ]]; then
+            while read -r -t 0; do read -r; done
+        fi
         
         if read -r choice; then
             choice=$(echo "$choice" | xargs)  # Remove whitespace
             
             case $choice in
                 1)
-                    clear
+                    if [[ -t 0 ]] && [[ -t 1 ]]; then
+                        clear
+                    fi
                     echo -e "${BLUE}=== Add Domain ===${NC}"
                     echo ""
                     echo -n -e "${YELLOW}Enter domain name (e.g., example.com): ${NC}"
@@ -808,7 +858,9 @@ run_interactive() {
                     fi
                     ;;
                 2)
-                    clear
+                    if [[ -t 0 ]] && [[ -t 1 ]]; then
+                        clear
+                    fi
                     echo -e "${BLUE}=== Remove Domain ===${NC}"
                     echo ""
                     
@@ -829,19 +881,28 @@ run_interactive() {
                             fi
                             
                             echo "$((count + 1)). $domain_name ($status)"
-                            ((count++))
+                            count=$((count + 1))
                         fi
                     done
+                    
                     
                     if [[ $count -eq 0 ]]; then
                         print_error "No domains found"
                         echo ""
-                        echo -n -e "${YELLOW}Press Enter to continue...${NC}"
+                        if [[ ! -t 0 ]] || [[ ! -t 1 ]]; then
+                            echo -n "Press Enter to continue..."
+                        else
+                            echo -n -e "${YELLOW}Press Enter to continue...${NC}"
+                        fi
                         read -r
                     else
                         echo "0. Cancel"
                         echo ""
-                        echo -n -e "${YELLOW}Select domain [0-$count]: ${NC}"
+                        if [[ ! -t 0 ]] || [[ ! -t 1 ]]; then
+                            echo -n "Select domain [0-$count]: "
+                        else
+                            echo -n -e "${YELLOW}Select domain [0-$count]: ${NC}"
+                        fi
                         read -r choice
                         choice=$(echo "$choice" | xargs)
                         
@@ -850,7 +911,11 @@ run_interactive() {
                         elif [[ "$choice" =~ ^[1-9][0-9]*$ ]] && [[ $choice -le $count ]]; then
                             domain="${domains[$((choice - 1))]}"
                             echo ""
-                            echo -n -e "${YELLOW}Remove website files too? [y/N]: ${NC}"
+                            if [[ ! -t 0 ]] || [[ ! -t 1 ]]; then
+                                echo -n "Remove website files too? [y/N]: "
+                            else
+                                echo -n -e "${YELLOW}Remove website files too? [y/N]: ${NC}"
+                            fi
                             read -r remove_files
                             local files_flag="false"
                             if [[ $remove_files =~ ^[yY] ]]; then
@@ -861,19 +926,27 @@ run_interactive() {
                             print_error "Invalid choice"
                         fi
                         echo ""
-                        echo -n -e "${YELLOW}Press Enter to continue...${NC}"
+                        if [[ ! -t 0 ]] || [[ ! -t 1 ]]; then
+                            echo -n "Press Enter to continue..."
+                        else
+                            echo -n -e "${YELLOW}Press Enter to continue...${NC}"
+                        fi
                         read -r
                     fi
                     ;;
                 3)
-                    clear
+                    if [[ -t 0 ]] && [[ -t 1 ]]; then
+                        clear
+                    fi
                     list_domains
                     echo ""
                     echo -n -e "${YELLOW}Press Enter to continue...${NC}"
                     read -r
                     ;;
                 4)
-                    clear
+                    if [[ -t 0 ]] && [[ -t 1 ]]; then
+                        clear
+                    fi
                     echo -e "${BLUE}=== Domain Status ===${NC}"
                     echo ""
                     
@@ -894,7 +967,7 @@ run_interactive() {
                             fi
                             
                             echo "$((count + 1)). $domain_name ($status)"
-                            ((count++))
+                            count=$((count + 1))
                         fi
                     done
                     
@@ -925,7 +998,9 @@ run_interactive() {
                     fi
                     ;;
                 5)
-                    clear
+                    if [[ -t 0 ]] && [[ -t 1 ]]; then
+                        clear
+                    fi
                     echo -e "${BLUE}=== Enable Domain ===${NC}"
                     echo ""
                     
@@ -946,7 +1021,7 @@ run_interactive() {
                             fi
                             
                             echo "$((count + 1)). $domain_name ($status)"
-                            ((count++))
+                            count=$((count + 1))
                         fi
                     done
                     
@@ -977,7 +1052,9 @@ run_interactive() {
                     fi
                     ;;
                 6)
-                    clear
+                    if [[ -t 0 ]] && [[ -t 1 ]]; then
+                        clear
+                    fi
                     echo -e "${BLUE}=== Disable Domain ===${NC}"
                     echo ""
                     
@@ -998,7 +1075,7 @@ run_interactive() {
                             fi
                             
                             echo "$((count + 1)). $domain_name ($status)"
-                            ((count++))
+                            count=$((count + 1))
                         fi
                     done
                     
@@ -1029,7 +1106,9 @@ run_interactive() {
                     fi
                     ;;
                 7)
-                    clear
+                    if [[ -t 0 ]] && [[ -t 1 ]]; then
+                        clear
+                    fi
                     echo -e "${BLUE}=== Add SSL Certificate ===${NC}"
                     echo ""
                     
@@ -1050,7 +1129,7 @@ run_interactive() {
                             fi
                             
                             echo "$((count + 1)). $domain_name ($status)"
-                            ((count++))
+                            count=$((count + 1))
                         fi
                     done
                     
@@ -1081,7 +1160,9 @@ run_interactive() {
                     fi
                     ;;
                 8)
-                    clear
+                    if [[ -t 0 ]] && [[ -t 1 ]]; then
+                        clear
+                    fi
                     echo -e "${BLUE}=== Remove SSL Certificate ===${NC}"
                     echo ""
                     
@@ -1102,7 +1183,7 @@ run_interactive() {
                             fi
                             
                             echo "$((count + 1)). $domain_name ($status)"
-                            ((count++))
+                            count=$((count + 1))
                         fi
                     done
                     
@@ -1133,7 +1214,9 @@ run_interactive() {
                     fi
                     ;;
                 9)
-                    clear
+                    if [[ -t 0 ]] && [[ -t 1 ]]; then
+                        clear
+                    fi
                     echo -e "${BLUE}=== Renew SSL Certificates ===${NC}"
                     renew_ssl
                     echo ""
@@ -1141,14 +1224,18 @@ run_interactive() {
                     read -r
                     ;;
                 10)
-                    clear
+                    if [[ -t 0 ]] && [[ -t 1 ]]; then
+                        clear
+                    fi
                     show_server_info
                     echo ""
                     echo -n -e "${YELLOW}Press Enter to continue...${NC}"
                     read -r
                     ;;
                 11)
-                    clear
+                    if [[ -t 0 ]] && [[ -t 1 ]]; then
+                        clear
+                    fi
                     echo -e "${BLUE}=== Launching Server Manager ===${NC}"
                     echo ""
                     if command -v server-manager >/dev/null 2>&1; then
@@ -1161,7 +1248,9 @@ run_interactive() {
                     fi
                     ;;
                 0)
-                    clear
+                    if [[ -t 0 ]] && [[ -t 1 ]]; then
+                        clear
+                    fi
                     print_success "Thank you for using Domain Manager!"
                     exit 0
                     ;;
